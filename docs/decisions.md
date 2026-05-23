@@ -4,6 +4,26 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-23 — ADR-007: XcodeGen owns the `.xcodeproj`
+
+**Context:** `.xcodeproj/project.pbxproj` is a multi-thousand-line auto-generated UUID-keyed file that conflicts on every PR. We want PR diffs that read cleanly.
+
+**Decision:** The Xcode project is generated from `ios/project.yml` via [XcodeGen](https://github.com/yonaskolb/XcodeGen). `ios/TokenTracker.xcodeproj/` is gitignored. CI runs `xcodegen generate` before `xcodebuild`.
+
+**Tradeoffs:**
+- Everyone needs `brew install xcodegen` once.
+- Custom Xcode UI changes (build phases, capabilities) must be reflected back into `project.yml` instead of being committed via the IDE.
+
+## 2026-05-23 — ADR-006: PR-only via local pre-push hook
+
+**Context:** GitHub free tier blocks branch protection on private repos. We still want PR-only flow.
+
+**Decision:** Self-enforce with a tracked pre-push hook at `scripts/git-hooks/pre-push` that rejects pushes to `main`. New clones run `./scripts/install-git-hooks.sh` once. Emergency override via `git push --no-verify origin main`.
+
+**Risk accepted:** A clone that skips the hook install can still push to main. Mitigation: we are the only collaborator and the convention is documented in README.
+
+---
+
 ## 2026-05-23 — ADR-005: `amount` field is in cents USD, not dollars
 
 **Context:** First call to `/v1/organizations/cost_report` returned `{"amount":"2013.9595","currency":"USD"}`. The `currency` field misleadingly suggests `amount` is in dollars. MTD total summed to $56,073.44 vs dashboard's $562.03 — exactly 100x off.

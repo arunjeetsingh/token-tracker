@@ -49,11 +49,37 @@ python3 scripts/cost_api_probe.py --mtd
 Reads admin key from `~/.openclaw/workspace/secrets/anthropic-admin-key.txt`.
 
 ### iOS app
-TBD — pending Xcode install + first project commit.
+
+The `.xcodeproj` is **generated** from `ios/project.yml` via [XcodeGen](https://github.com/yonsm/XcodeGen) so it stays diff-friendly. First-time setup:
+
+```bash
+brew install xcodegen
+cd ios
+xcodegen generate
+open TokenTracker.xcodeproj
+```
+
+Command-line build & test (CI does the same):
+
+```bash
+cd ios
+xcodegen generate
+xcodebuild \
+  -project TokenTracker.xcodeproj \
+  -scheme TokenTracker \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+  -configuration Debug \
+  CODE_SIGNING_ALLOWED=NO \
+  clean test
+```
 
 ## Workflow
 
 - **Private repo** on GitHub (`arunjeetsingh/token-tracker`).
-- **PRs only** after first push — `main` is protected.
+- **PRs only** after first push. Branch protection isn't configurable on free-tier private repos, so the convention is enforced by a local pre-push hook. Install it after cloning:
+  ```bash
+  ./scripts/install-git-hooks.sh
+  ```
+  This blocks `git push origin main`. Override only in emergencies with `git push --no-verify origin main`.
 - Arun reviews and merges every PR.
-- CI runs on every PR via GitHub Actions (lint + test).
+- CI runs on every PR via GitHub Actions (Python lint + iOS build/test).

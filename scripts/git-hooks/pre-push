@@ -1,0 +1,21 @@
+#!/bin/sh
+# token-tracker: block direct pushes to main (PR-only workflow).
+# Override only in emergencies: `git push --no-verify origin main`.
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "" >&2
+      echo "🚫 Direct push to 'main' blocked." >&2
+      echo "   Open a PR instead:" >&2
+      echo "     git switch -c feature/<branch-name>" >&2
+      echo "     git push -u origin feature/<branch-name>" >&2
+      echo "     gh pr create --fill" >&2
+      echo "" >&2
+      echo "   Emergency override: git push --no-verify origin main" >&2
+      echo "" >&2
+      exit 1
+      ;;
+  esac
+done
+exit 0
