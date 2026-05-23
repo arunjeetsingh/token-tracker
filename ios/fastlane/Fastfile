@@ -13,6 +13,7 @@
 #   APP_IDENTIFIER                   # bundle id (override-able for free signing)
 
 require "base64"
+require "securerandom"
 
 default_platform(:ios)
 
@@ -51,7 +52,25 @@ platform :ios do
 
   desc "Build IPA and upload to TestFlight internal testers."
   lane :beta do
-    setup_ci if ENV["CI"]
+    # On CI: create a dedicated, unlocked temp keychain so `get_certificates`
+    # can import the freshly-generated .p12 without UI/password prompts.
+    # `setup_ci` alone is not enough on the macos-15 image — the imported cert
+    # ends up in the default login.keychain which has no known password, so the
+    # subsequent `find-identity` / partition-list calls fail with
+    # "Could not find the newly generated certificate installed".
+    keychain_name     = "fastlane_ci.keychain-db"
+    keychain_password = SecureRandom.hex(16)
+    if ENV["CI"]
+      setup_ci
+      create_keychain(
+        name:           keychain_name,
+        password:       keychain_password,
+        default_keychain: true,
+        unlock:         true,
+        timeout:        3600,
+        lock_when_sleeps: false
+      )
+    end
 
     api_key = app_store_connect_api_key(
       key_id:                ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
@@ -66,7 +85,12 @@ platform :ios do
 
     # No Match for now — one dev, one app. Use plain cert/sigh via API key.
     in_ios_dir do
-      get_certificates(api_key: api_key, force: false)
+      cert_opts = { api_key: api_key, force: false }
+      if ENV["CI"]
+        cert_opts[:keychain_path]     = keychain_name
+        cert_opts[:keychain_password] = keychain_password
+      end
+      get_certificates(cert_opts)
       get_provisioning_profile(
         api_key:         api_key,
         app_identifier:  bundle_id,
