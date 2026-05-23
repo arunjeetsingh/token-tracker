@@ -1,0 +1,47 @@
+name: iOS build & test
+
+# Skips itself cleanly until an Xcode project exists in ios/.
+# Re-enable the actual build/test by editing the `if:` once we have one.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-build-test:
+    name: iOS build & test
+    runs-on: macos-15
+    if: ${{ hashFiles('ios/**/project.pbxproj') != '' || hashFiles('ios/**/Package.swift') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Build & test
+        env:
+          SCHEME: TokenTracker
+          DESTINATION: "platform=iOS Simulator,name=iPhone 15,OS=latest"
+        run: |
+          set -euo pipefail
+          if [ -f ios/TokenTracker.xcodeproj/project.pbxproj ]; then
+            xcodebuild \
+              -project ios/TokenTracker.xcodeproj \
+              -scheme "$SCHEME" \
+              -destination "$DESTINATION" \
+              -enableCodeCoverage YES \
+              clean test
+          else
+            echo "no ios/ project yet — nothing to build"
+          fi

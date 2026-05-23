@@ -10,7 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  # ---------- Python scripts (cost_api_probe etc.) ----------
   python-lint:
     name: Python lint & syntax
     runs-on: ubuntu-latest
@@ -23,38 +22,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ruff
-      - name: Ruff check
+      - name: Ruff check (scripts)
         run: ruff check scripts/
-      - name: Compile-check
+      - name: Compile-check (scripts)
         run: python -m compileall -q scripts/
-
-  # ---------- iOS build & test (enabled once ios/ has an Xcode project) ----------
-  ios-build-test:
-    name: iOS build & test
-    runs-on: macos-15
-    if: ${{ hashFiles('ios/**/*.xcodeproj/project.pbxproj', 'ios/**/Package.swift') != '' }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
-      - name: Show toolchain
-        run: |
-          xcodebuild -version
-          swift --version
-      # TODO(token-tracker): replace scheme + destination once the Xcode project exists.
-      - name: Build & test
-        env:
-          SCHEME: TokenTracker
-          DESTINATION: "platform=iOS Simulator,name=iPhone 15,OS=latest"
-        run: |
-          set -euo pipefail
-          if [ -f ios/TokenTracker.xcodeproj/project.pbxproj ]; then
-            xcodebuild \
-              -project ios/TokenTracker.xcodeproj \
-              -scheme "$SCHEME" \
-              -destination "$DESTINATION" \
-              -enableCodeCoverage YES \
-              clean test | xcpretty
-          else
-            echo "ios/ project not present yet — skipping"
-          fi
