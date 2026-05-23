@@ -48,6 +48,7 @@ jobs:
         env:
           CI: "true"
           APP_IDENTIFIER:                    ${{ vars.APP_IDENTIFIER }}
+          APPLE_TEAM_ID:                     ${{ vars.APPLE_TEAM_ID }}
           FASTLANE_TEAM_ID:                  ${{ vars.APPLE_TEAM_ID }}
           APP_STORE_CONNECT_API_KEY_ID:      ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_ISSUER_ID:   ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}

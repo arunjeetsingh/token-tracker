@@ -109,6 +109,10 @@ platform :ios do
     bump_build
 
     in_ios_dir do
+      team_id = ENV["APPLE_TEAM_ID"] || ENV["FASTLANE_TEAM_ID"]
+      xcargs  = "-allowProvisioningUpdates"
+      xcargs += " DEVELOPMENT_TEAM=#{team_id}" if team_id && !team_id.empty?
+
       build_app(
         project:          PROJECT,
         scheme:           SCHEME,
@@ -119,7 +123,7 @@ platform :ios do
         export_method:    "app-store",
         include_bitcode:  false,
         include_symbols:  true,
-        xcargs:           "-allowProvisioningUpdates"
+        xcargs:           xcargs
       )
 
       upload_to_testflight(
