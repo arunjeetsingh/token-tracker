@@ -1,0 +1,80 @@
+name: TokenTracker
+options:
+  bundleIdPrefix: ai.openclaw.tokentracker
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""        # CI uses xcodebuild without signing; local dev sets via Xcode UI
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+    GCC_TREAT_WARNINGS_AS_ERRORS: NO
+
+targets:
+  TokenTracker:
+    type: application
+    platform: iOS
+    sources:
+      - path: TokenTracker
+        excludes:
+          - "**/.DS_Store"
+    resources:
+      - path: TokenTracker/Resources
+        optional: true
+    info:
+      path: TokenTracker/Info.plist
+      properties:
+        CFBundleDisplayName: TokenTracker
+        UILaunchScreen:
+          UIColorName: ""
+          UIImageName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - armv7
+        NSFaceIDUsageDescription: "Used to unlock your Anthropic admin key from the device Keychain."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.tokentracker.TokenTracker
+        TARGETED_DEVICE_FAMILY: "1"   # iPhone only for MVP
+        CODE_SIGN_ENTITLEMENTS: ""
+
+  TokenTrackerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TokenTrackerTests
+    dependencies:
+      - target: TokenTracker
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.tokentracker.TokenTrackerTests
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TokenTracker.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TokenTracker"
+
+schemes:
+  TokenTracker:
+    build:
+      targets:
+        TokenTracker: all
+        TokenTrackerTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - TokenTrackerTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
