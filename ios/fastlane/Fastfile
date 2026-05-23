@@ -60,16 +60,24 @@ platform :ios do
     # "Could not find the newly generated certificate installed".
     keychain_name     = "fastlane_ci.keychain-db"
     keychain_password = SecureRandom.hex(16)
+    keychain_path     = File.expand_path("~/Library/Keychains/#{keychain_name}")
     if ENV["CI"]
       setup_ci
       create_keychain(
-        name:           keychain_name,
-        password:       keychain_password,
+        name:             keychain_name,
+        password:         keychain_password,
         default_keychain: true,
-        unlock:         true,
-        timeout:        3600,
+        unlock:           true,
+        timeout:          3600,
         lock_when_sleeps: false
       )
+      # macOS appends '-db' suffix only if not already present; both .keychain
+      # and .keychain-db variants may exist depending on macOS version.
+      candidates = [keychain_path, keychain_path.sub(/-db\z/, ""), "#{keychain_path}-db"].uniq
+      resolved = candidates.find { |p| File.exist?(p) }
+      UI.user_error!("Keychain not found in any of: #{candidates.inspect}") unless resolved
+      keychain_path = resolved
+      UI.message("Using keychain at #{keychain_path}")
     end
 
     api_key = app_store_connect_api_key(
@@ -87,7 +95,7 @@ platform :ios do
     in_ios_dir do
       cert_opts = { api_key: api_key, force: false }
       if ENV["CI"]
-        cert_opts[:keychain_path]     = keychain_name
+        cert_opts[:keychain_path]     = keychain_path
         cert_opts[:keychain_password] = keychain_password
       end
       get_certificates(cert_opts)
