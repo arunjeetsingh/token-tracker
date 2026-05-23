@@ -1,0 +1,60 @@
+name: TestFlight beta
+
+# Manual trigger only for now (workflow_dispatch). Once verified, can
+# auto-run on push to main by enabling the on.push block below.
+on:
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: "Beta release notes (optional)"
+        required: false
+        default: "Automated CI build"
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "ios/**"
+  #     - ".github/workflows/testflight.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: Build & upload to TestFlight
+    runs-on: macos-15
+    environment: testflight
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          ruby -v
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Install fastlane
+        run: brew install fastlane
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Run fastlane beta
+        working-directory: ios
+        env:
+          CI: "true"
+          APP_IDENTIFIER:                    ${{ vars.APP_IDENTIFIER }}
+          FASTLANE_TEAM_ID:                  ${{ vars.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_API_KEY_ID:      ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID:   ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_B64:     ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          FASTLANE_DISABLE_COLORS:           "1"
+          FASTLANE_HIDE_TIMESTAMP:           "1"
+          LANG:                              "en_US.UTF-8"
+          LC_ALL:                            "en_US.UTF-8"
+          BETA_CHANGELOG:                    ${{ github.event.inputs.changelog }}
+        run: fastlane beta

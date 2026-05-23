@@ -1,0 +1,7 @@
+# Identifies the app for fastlane lanes.
+# Real values are sourced from env vars so secrets don't live in git.
+
+app_identifier(ENV["APP_IDENTIFIER"] || "ai.openclaw.tokentracker.TokenTracker")
+apple_id(ENV["FASTLANE_APPLE_ID"]) if ENV["FASTLANE_APPLE_ID"]
+team_id(ENV["FASTLANE_TEAM_ID"]) if ENV["FASTLANE_TEAM_ID"]
+itc_team_id(ENV["FASTLANE_ITC_TEAM_ID"]) if ENV["FASTLANE_ITC_TEAM_ID"]
