@@ -6,11 +6,13 @@ on:
     paths:
       - "ios/**"
       - ".github/workflows/ios.yml"
+      - "scripts/pick_ios_simulator.py"
   pull_request:
     branches: [main]
     paths:
       - "ios/**"
       - ".github/workflows/ios.yml"
+      - "scripts/pick_ios_simulator.py"
   workflow_dispatch:
 
 permissions:
@@ -39,9 +41,7 @@ jobs:
         id: sim
         run: |
           set -euo pipefail
-          # Pick the first available simulator that matches "iPhone 1" pattern (15/16/17/etc).
-          DEST=$(xcrun simctl list devices available --json \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f"platform=iOS Simulator,name={dev[\"name\"]},OS={k.split(\".\")[-1].replace(\"iOS-\",\"\").replace(\"-\", \".\")}") for k,v in d["devices"].items() if "iOS" in k for dev in v if dev["name"].startswith("iPhone")][0:1]')
+          DEST=$(python3 scripts/pick_ios_simulator.py)
           echo "destination=$DEST" >> "$GITHUB_OUTPUT"
           echo "Using destination: $DEST"
 
