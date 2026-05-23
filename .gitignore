@@ -1,0 +1,57 @@
+# --- Secrets (never commit) ---
+*.pem
+*.key
+secrets/
+.env
+.env.*
+!.env.example
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- Xcode / iOS ---
+ios/build/
+ios/DerivedData/
+ios/*.xcuserstate
+ios/*.xcuserdatad/
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# CocoaPods / Carthage / SPM caches
+ios/Pods/
+ios/Carthage/Build/
+ios/.swiftpm/
+ios/.build/
+*.dSYM.zip
+*.dSYM
+
+# Fastlane
+ios/fastlane/report.xml
+ios/fastlane/Preview.html
+ios/fastlane/screenshots
+ios/fastlane/test_output
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# --- Logs / tmp ---
+*.log
+/tmp/
+.cache/

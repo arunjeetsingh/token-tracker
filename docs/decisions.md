@@ -1,0 +1,53 @@
+# Decision Log
+
+Append-only. Newest at top.
+
+---
+
+## 2026-05-23 — ADR-005: `amount` field is in cents USD, not dollars
+
+**Context:** First call to `/v1/organizations/cost_report` returned `{"amount":"2013.9595","currency":"USD"}`. The `currency` field misleadingly suggests `amount` is in dollars. MTD total summed to $56,073.44 vs dashboard's $562.03 — exactly 100x off.
+
+**Decision:** All `amount` values from the cost_report endpoint must be divided by 100 to convert from cents to dollars. Wrap in a typed `Money` value type in the iOS app so the conversion only happens once. Add a unit test that locks the contract.
+
+**Source:** Confirmed via web search + empirical validation against Arun's dashboard. Anthropic API docs do not state this explicitly — risk that they change it later.
+
+---
+
+## 2026-05-23 — ADR-004: Repo name = `token-tracker`
+
+**Decision:** Private GitHub repo `arunjeetsingh/token-tracker`. No org. Main branch protected. PR-only after first push. Squash merge (clean linear history).
+
+---
+
+## 2026-05-23 — ADR-003: Backend pattern = none for MVP
+
+**Context:** Admin API key is highly sensitive (full read/write to org). Two choices:
+1. Store key in iOS Keychain, call Anthropic API directly from the device.
+2. Run a tiny backend service that holds the key, exposes a narrow read-only endpoint.
+
+**Decision (MVP):** Option 1 — direct from device, key in Keychain. Simpler, no infra to maintain. Single-user app, key only ever lives on Arun's device.
+
+**Future:** If we add multi-user / sharing / push notifications, move to option 2 with a proper auth layer.
+
+**Risk:** If the phone is compromised, the admin key (which has org-wide read-write scope) is exposed. Anthropic only offers admin keys, no read-only variant. Mitigations: Keychain w/ `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, never sync to iCloud Keychain, require Face ID / passcode to read on each app launch.
+
+---
+
+## 2026-05-23 — ADR-002: Convert Anthropic account to organization
+
+**Context:** Anthropic's Usage & Cost Admin API requires an Admin API key, which is only available to organization accounts (not individual).
+
+**Decision:** Arun converted his individual account to an org ("Maximum Impact"). Admin key generated.
+
+**Tradeoff:** None observed — billing, pricing, and feature access unchanged. Org wrapper is purely structural.
+
+---
+
+## 2026-05-23 — ADR-001: iOS first, then Android, then web
+
+**Context:** Project goals (per Arun, 2026-05-22): build native apps, MVP on iOS, expand later.
+
+**Decision:** Native SwiftUI iOS app. No React Native, no Flutter. Re-implement on Kotlin/Compose for Android. Web is undecided — possibly Next.js, possibly skipped if mobile is enough.
+
+**Why native:** Better Keychain integration, smoother UX, takes advantage of Arun's MacBook Air + Mac mini Apple ecosystem for dev. Cross-platform frameworks add complexity we don't need for a single-purpose tracker.
