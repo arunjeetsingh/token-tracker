@@ -2,26 +2,49 @@ import SwiftUI
 
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
-    @State private var pendingKey: String = ""
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Token Tracker")
-                .toolbar {
-                    if case .loaded = viewModel.state {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                Task { await viewModel.refresh() }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            .accessibilityLabel("Refresh")
-                        }
-                    }
-                }
+                .navigationTitle(navigationTitle)
+                .navigationBarTitleDisplayMode(viewModel.state == .needsCredentials ? .inline : .large)
+                .toolbar { toolbar }
         }
         .task { await viewModel.bootstrap() }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(
+                maskedKey: viewModel.maskedKey,
+                orgName: viewModel.state.orgName,
+                onDisconnect: { await viewModel.disconnect() }
+            )
+        }
+    }
+
+    private var navigationTitle: String {
+        viewModel.state == .needsCredentials ? "" : "Token Counter"
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        if viewModel.state.isLoaded {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await viewModel.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .accessibilityLabel("Refresh")
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Settings")
+            }
+        }
     }
 
     @ViewBuilder
@@ -30,39 +53,14 @@ struct DashboardView: View {
         case .idle, .loading:
             ProgressView().scaleEffect(1.4)
         case .needsCredentials:
-            credentialsForm
+            OnboardingView(onSubmit: { key in
+                await viewModel.connect(using: key)
+            })
         case .loaded(let amount, let asOf, let orgName):
             loadedView(amount: amount, asOf: asOf, orgName: orgName)
         case .failed(let message):
             errorView(message: message)
         }
-    }
-
-    private var credentialsForm: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Anthropic admin API key")
-                .font(.headline)
-            Text("Required to read your org's usage & cost. Stored in the iOS Keychain on this device only.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            SecureField("***", text: $pendingKey)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-            Button {
-                let trimmed = pendingKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
-                Task {
-                    await viewModel.save(apiKey: trimmed)
-                    pendingKey = ""
-                }
-            } label: {
-                Text("Save & connect").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(pendingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding()
     }
 
     private func loadedView(amount: Money, asOf: Date, orgName: String) -> some View {
@@ -92,8 +90,14 @@ struct DashboardView: View {
                 .font(.footnote)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
-            Button("Retry") { Task { await viewModel.refresh() } }
+            HStack {
+                Button("Retry") { Task { await viewModel.refresh() } }
+                    .buttonStyle(.bordered)
+                Button("Disconnect", role: .destructive) {
+                    Task { await viewModel.disconnect() }
+                }
                 .buttonStyle(.bordered)
+            }
         }
         .padding()
     }

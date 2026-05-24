@@ -4,6 +4,27 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-24 — ADR-008: Onboarding UX = polished admin-key paste (Option B), not cookie scraping
+
+**Context:** First TestFlight build (v0.1.0) shipped with a bare SecureField asking for an admin key — zero context, scary. Three real paths to better UX:
+  - **A:** Reverse-engineer `console.anthropic.com` session cookies via WebView. True "just log in" UX but uses undocumented APIs; near-certain App Store rejection + ToS risk.
+  - **B:** Keep admin-key model, wrap it in a great 3-step onboarding (in-app Safari → console → paste with clipboard auto-detect). Official API, stable, App Store safe.
+  - **C:** Build a backend that holds keys server-side; phone gets a session token. Right destination for a public product, but turns the MVP into a 3-week side quest and makes us custodians of other people's admin keys.
+
+**Decision:** Option B for now. Path to C stays open — the iOS `AnthropicClient` is the only place that knows about `api.anthropic.com`, so swapping it for our own backend later is a localized change.
+
+**Shipped in this PR (v0.2.0):**
+  - `OnboardingView` with 3 step cards + in-app `SFSafariViewController` for the console.
+  - Clipboard auto-detect for `sk-ant-…` prefixes (peek-only, no system banner unless we surface the suggestion).
+  - Show/hide toggle on the SecureField.
+  - Pre-flight `whoami()` call before saving to Keychain — junk keys never get persisted.
+  - `SettingsView` (gear in toolbar) with masked key, org name, and Disconnect (wipes Keychain, returns to onboarding).
+  - Auto-recover on 401/403: stale keys get wiped and the user is bounced to onboarding instead of a generic error.
+
+**Explicitly NOT shipped:** OAuth/cookie scraping (Option A) and any server-side key custody (Option C).
+
+---
+
 ## 2026-05-23 — ADR-007: XcodeGen owns the `.xcodeproj`
 
 **Context:** `.xcodeproj/project.pbxproj` is a multi-thousand-line auto-generated UUID-keyed file that conflicts on every PR. We want PR diffs that read cleanly.
