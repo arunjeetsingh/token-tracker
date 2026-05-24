@@ -21,11 +21,18 @@ permissions:
 jobs:
   testflight:
     name: Build & upload to TestFlight
-    runs-on: macos-15
+    runs-on: macos-26
     environment: testflight
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          ls /Applications | grep -i Xcode || true
+          # macos-26 default Xcode should be 26.x already, but be explicit
+          sudo xcode-select -s /Applications/Xcode.app || true
+          xcodebuild -version
 
       - name: Show toolchain
         run: |

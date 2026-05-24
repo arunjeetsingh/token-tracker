@@ -31,20 +31,22 @@ targets:
     info:
       path: TokenTracker/Info.plist
       properties:
-        CFBundleDisplayName: TokenTracker
+        CFBundleDisplayName: Token Counter
         UILaunchScreen:
           UIColorName: ""
           UIImageName: ""
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIRequiredDeviceCapabilities:
-          - armv7
+          - arm64
         NSFaceIDUsageDescription: "Used to unlock your Anthropic admin key from the device Keychain."
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.tokentracker.TokenTracker
         TARGETED_DEVICE_FAMILY: "1"   # iPhone only for MVP
         CODE_SIGN_ENTITLEMENTS: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   TokenTrackerTests:
     type: bundle.unit-test
