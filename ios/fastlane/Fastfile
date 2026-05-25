@@ -2,7 +2,12 @@
 #
 # Lanes:
 #   - generate    : Regenerate .xcodeproj from project.yml via xcodegen.
-#   - bump_build  : Bump CURRENT_PROJECT_VERSION to $GITHUB_RUN_NUMBER (or timestamp).
+#   - bump_build  : Bump CURRENT_PROJECT_VERSION to a monotonically-increasing
+#                   Unix timestamp. ASC requires the bundle version to be
+#                   strictly greater than the previously uploaded one for the
+#                   same (bundleId, marketingVersion) pair; using $GITHUB_RUN_NUMBER
+#                   resets to 1 whenever the workflow file is recreated, which
+#                   can collide with a prior upload.
 #   - beta        : Build a Release archive and upload to TestFlight internal testers.
 #
 # Required env vars for `beta` (see docs/testflight-setup.md):
@@ -40,15 +45,31 @@ platform :ios do
     in_ios_dir { sh("xcodegen generate") }
   end
 
-  desc "Set CURRENT_PROJECT_VERSION to the GitHub run number (or local timestamp)."
+  desc "Set CURRENT_PROJECT_VERSION to a monotonically-increasing Unix timestamp."
   lane :bump_build do
-    build = ENV["GITHUB_RUN_NUMBER"] || Time.now.strftime("%Y%m%d%H%M")
+    # Use a Unix timestamp so the build number is always strictly greater than
+    # any previous build for this (bundleId, marketingVersion) pair, including
+    # cases where the workflow was recreated or the GITHUB_RUN_NUMBER counter
+    # was reset. Allow BUILD_NUMBER env override for manual testing.
+    build = ENV["BUILD_NUMBER"] || Time.now.to_i.to_s
     UI.message "Setting build number to #{build}"
     contents = File.read(PROJECT_YML)
-    updated  = contents.sub(/CURRENT_PROJECT_VERSION:\s*"?[^"\n]+"?/,
-                            %(CURRENT_PROJECT_VERSION: "#{build}"))
+    updated  = contents.sub(/^(\s*)CURRENT_PROJECT_VERSION:\s*"?[^"\n]+"?/,
+                            %(\\1CURRENT_PROJECT_VERSION: "#{build}"))
+    if updated == contents
+      UI.user_error!("bump_build: failed to update CURRENT_PROJECT_VERSION in #{PROJECT_YML}")
+    end
     File.write(PROJECT_YML, updated)
     in_ios_dir { sh("xcodegen generate") }
+
+    # Verify the regenerated project actually carries the bumped version.
+    pbx = File.join(PROJECT, "project.pbxproj")
+    if File.exist?(pbx)
+      contents = File.read(pbx)
+      unless contents.include?("CURRENT_PROJECT_VERSION = #{build}")
+        UI.user_error!("bump_build: xcodegen did not apply CURRENT_PROJECT_VERSION=#{build} to project.pbxproj")
+      end
+    end
   end
 
   desc "Build IPA and upload to TestFlight internal testers."
