@@ -125,6 +125,14 @@ platform :ios do
         type:           "appstore",
         app_identifier: bundle_id,
         api_key:        api_key,
+        # Storage repo and mode are also declared in ios/fastlane/Matchfile
+        # for parity with local `fastlane match` invocations, but we pass
+        # them explicitly here so CI doesn't depend on Matchfile discovery
+        # (which has bitten us before — fastlane's CWD vs Fastfile-dir
+        # search order is surprising).
+        git_url:        "git@github.com:arunjeetsingh/token-tracker-certs.git",
+        git_branch:     ENV["MATCH_GIT_BRANCH"] || "main",
+        storage_mode:   "git",
         # readonly=false on CI so first-time bootstrap can create the cert /
         # profile and push them to the storage repo. After that, subsequent
         # runs are effectively read-only because the cert + profile already
