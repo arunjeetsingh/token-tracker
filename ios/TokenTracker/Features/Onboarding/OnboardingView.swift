@@ -15,7 +15,7 @@ struct OnboardingView: View {
 
     @State private var pendingKey: String = ""
     @State private var clipboardSuggestion: String?
-    @State private var showSafari = false
+    @State private var safariURL: SafariURL?
     @State private var isSubmitting = false
     @State private var submitError: String?
     @State private var revealKey = false
@@ -23,7 +23,11 @@ struct OnboardingView: View {
     // Deep-link straight to the Admin Keys page so users don't end up on the
     // regular API Keys page (which produces `sk-ant-api...` keys, not the
     // `sk-ant-admin01-...` keys the cost reporting API requires).
-    private let consoleURL = URL(string: "https://console.anthropic.com/settings/admin-keys")!  // swiftlint:disable:this force_unwrapping
+    private let adminKeysURL = URL(string: "https://console.anthropic.com/settings/admin-keys")!  // swiftlint:disable:this force_unwrapping
+    // Deep-link to the Organization settings page so users can confirm they
+    // are on an organizational account (admin keys aren't available on
+    // individual accounts).
+    private let organizationURL = URL(string: "https://console.anthropic.com/settings/organization")!  // swiftlint:disable:this force_unwrapping
 
     var body: some View {
         ScrollView {
@@ -40,8 +44,8 @@ struct OnboardingView: View {
         .navigationTitle("Connect Anthropic")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: detectClipboard)
-        .sheet(isPresented: $showSafari) {
-            SafariView(url: consoleURL)
+        .sheet(item: $safariURL) { wrapper in
+            SafariView(url: wrapper.url)
                 .ignoresSafeArea()
                 .onDisappear { detectClipboard() }
         }
@@ -67,7 +71,16 @@ struct OnboardingView: View {
             stepCard(
                 number: 1,
                 title: "Make sure you have an organization",
-                detail: "Admin keys are only available on **organizational** Anthropic accounts. If your console says “Individual” under your name, open **Settings → Organization** in the Console and create one before continuing — it takes a minute and is free."
+                detail: "Admin keys are only available on **organizational** Anthropic accounts. Tap the button to open the Organization settings page — if it says you're not in one yet, create one before continuing (it's free and takes a minute).",
+                action: AnyView(
+                    Button {
+                        safariURL = SafariURL(url: organizationURL)
+                    } label: {
+                        Label("Check Organization", systemImage: "building.2")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                )
             )
             stepCard(
                 number: 2,
@@ -75,7 +88,7 @@ struct OnboardingView: View {
                 detail: "Tap the button to sign in to console.anthropic.com inside this app. You'll land directly on the Admin Keys page.",
                 action: AnyView(
                     Button {
-                        showSafari = true
+                        safariURL = SafariURL(url: adminKeysURL)
                     } label: {
                         Label("Open Admin Keys", systemImage: "safari")
                             .frame(maxWidth: .infinity)
@@ -241,6 +254,13 @@ struct OnboardingView: View {
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
+}
+
+/// Identifiable wrapper around `URL` so we can drive `.sheet(item:)` from any
+/// of the Anthropic Console deep links the onboarding flow exposes.
+struct SafariURL: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
 
 /// Wraps `SFSafariViewController` so we can present the Anthropic console
