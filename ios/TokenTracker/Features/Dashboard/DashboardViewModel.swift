@@ -45,8 +45,8 @@ final class DashboardViewModel: ObservableObject {
             // Now fetch cost. If this fails the key is still saved (it auth'd) —
             // we surface the error in the dashboard state, not back to onboarding.
             do {
-                let total = try await client.monthToDateCost()
-                state = .loaded(amount: total, asOf: Date(), orgName: identity.name)
+                let report = try await client.monthToDateCost()
+                state = .loaded(report: report, orgName: identity.name)
             } catch {
                 state = .failed(message: error.localizedDescription)
             }
@@ -90,10 +90,10 @@ final class DashboardViewModel: ObservableObject {
         let client = AnthropicClient(apiKey: key)
         do {
             async let identity = client.whoami()
-            async let amount = client.monthToDateCost()
-            let (orgID, total) = try await (identity, amount)
+            async let report = client.monthToDateCost()
+            let (orgID, mtd) = try await (identity, report)
             maskedKey = AnthropicKeyValidation.masked(key)
-            state = .loaded(amount: total, asOf: Date(), orgName: orgID.name)
+            state = .loaded(report: mtd, orgName: orgID.name)
         } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
             // Token went bad — wipe it and force re-onboarding.
             try? KeychainStore.delete(.anthropicAdminKey)

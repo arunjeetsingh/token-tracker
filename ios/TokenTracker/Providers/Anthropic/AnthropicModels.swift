@@ -58,4 +58,59 @@ enum AnthropicAPI {
             case description
         }
     }
+
+    // MARK: - usage_report/messages
+
+    /// One page from `/v1/organizations/usage_report/messages`.
+    struct MessagesUsagePage: Decodable {
+        let data: [MessagesUsageBucket]
+        let hasMore: Bool
+        let nextPage: String?
+
+        enum CodingKeys: String, CodingKey {
+            case data
+            case hasMore = "has_more"
+            case nextPage = "next_page"
+        }
+    }
+
+    struct MessagesUsageBucket: Decodable {
+        let startingAt: Date
+        let endingAt: Date
+        let results: [MessagesUsageRow]
+
+        enum CodingKeys: String, CodingKey {
+            case startingAt = "starting_at"
+            case endingAt = "ending_at"
+            case results
+        }
+    }
+
+    /// One usage row. All fields except token counts may be null when the
+    /// corresponding group_by[] dimension isn't requested.
+    struct MessagesUsageRow: Decodable {
+        let model: String?
+        let uncachedInputTokens: Int
+        let cacheCreation: CacheCreation
+        let cacheReadInputTokens: Int
+        let outputTokens: Int
+
+        enum CodingKeys: String, CodingKey {
+            case model
+            case uncachedInputTokens = "uncached_input_tokens"
+            case cacheCreation = "cache_creation"
+            case cacheReadInputTokens = "cache_read_input_tokens"
+            case outputTokens = "output_tokens"
+        }
+    }
+
+    struct CacheCreation: Decodable {
+        let ephemeral5mInputTokens: Int
+        let ephemeral1hInputTokens: Int
+
+        enum CodingKeys: String, CodingKey {
+            case ephemeral5mInputTokens = "ephemeral_5m_input_tokens"
+            case ephemeral1hInputTokens = "ephemeral_1h_input_tokens"
+        }
+    }
 }

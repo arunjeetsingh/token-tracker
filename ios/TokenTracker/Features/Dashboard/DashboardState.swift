@@ -4,7 +4,7 @@ enum DashboardState: Equatable {
     case needsCredentials
     case idle
     case loading
-    case loaded(amount: Money, asOf: Date, orgName: String)
+    case loaded(report: MTDCost, orgName: String)
     case failed(message: String)
 
     var isLoaded: Bool {
@@ -13,7 +13,7 @@ enum DashboardState: Equatable {
     }
 
     var orgName: String? {
-        if case .loaded(_, _, let name) = self { return name }
+        if case .loaded(_, let name) = self { return name }
         return nil
     }
 }
