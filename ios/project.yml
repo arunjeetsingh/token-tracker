@@ -10,7 +10,9 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "2"
+    # Runtime overrides via fastlane `bump_build` lane (Unix timestamp); this
+    # static value is the floor used for local dev / non-CI builds.
+    CURRENT_PROJECT_VERSION: "1779733700"
     DEVELOPMENT_TEAM: ""        # CI uses xcodebuild without signing; local dev sets via Xcode UI
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
