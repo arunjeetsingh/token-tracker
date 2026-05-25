@@ -18,8 +18,10 @@
 #   APP_IDENTIFIER                   # bundle id (override-able for free signing)
 
 require "base64"
+require "fileutils"
 require "securerandom"
 require "shellwords"
+require "tmpdir"
 
 default_platform(:ios)
 
@@ -156,10 +158,17 @@ platform :ios do
 
     bump_build
 
+    # Capture the build number that bump_build just wrote so we can also
+    # pass it explicitly to xcodebuild (belt-and-suspenders: even if the
+    # pbxproj edit somehow doesn't carry through, xcargs wins).
+    bumped_build = File.read(PROJECT_YML)[/^\s*CURRENT_PROJECT_VERSION:\s*"?([^"\n]+)"?/, 1]
+    UI.message("build_app will sign with CURRENT_PROJECT_VERSION=#{bumped_build.inspect}")
+
     in_ios_dir do
       team_id = ENV["APPLE_TEAM_ID"] || ENV["FASTLANE_TEAM_ID"]
       xcargs_parts = ["-allowProvisioningUpdates"]
       xcargs_parts << "DEVELOPMENT_TEAM=#{team_id}" if team_id && !team_id.empty?
+      xcargs_parts << "CURRENT_PROJECT_VERSION=#{bumped_build}" if bumped_build && !bumped_build.empty?
       # Force manual signing in CI so xcodebuild uses the AppStore profile
       # fastlane just fetched, instead of trying to auto-manage a (missing)
       # Development profile.
@@ -191,6 +200,30 @@ platform :ios do
         }
       end
       build_app(build_opts)
+
+      # Verify the freshly-built .ipa really has the bumped CFBundleVersion
+      # before we hand it to App Store Connect. If it doesn't, fail loudly
+      # here rather than getting a confusing ENTITY_ERROR from altool.
+      ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+      if ipa_path && File.exist?(ipa_path)
+        tmpdir = Dir.mktmpdir("verify-ipa-")
+        begin
+          sh("unzip -q -o #{Shellwords.escape(ipa_path)} -d #{Shellwords.escape(tmpdir)}")
+          plist_path = Dir.glob(File.join(tmpdir, "Payload", "*.app", "Info.plist")).first
+          if plist_path && File.exist?(plist_path)
+            actual_build = `/usr/bin/plutil -extract CFBundleVersion raw -o - #{Shellwords.escape(plist_path)}`.strip
+            actual_short = `/usr/bin/plutil -extract CFBundleShortVersionString raw -o - #{Shellwords.escape(plist_path)}`.strip
+            UI.message("IPA reports CFBundleShortVersionString=#{actual_short.inspect} CFBundleVersion=#{actual_build.inspect}")
+            if bumped_build && actual_build != bumped_build
+              UI.user_error!("IPA CFBundleVersion=#{actual_build.inspect} does not match bumped value #{bumped_build.inspect}")
+            end
+          else
+            UI.important("verify-ipa: no Info.plist found under #{tmpdir}; skipping check")
+          end
+        ensure
+          FileUtils.rm_rf(tmpdir)
+        end
+      end
 
       upload_to_testflight(
         api_key:                          api_key,
