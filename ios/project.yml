@@ -34,6 +34,14 @@ targets:
       path: TokenTracker/Info.plist
       properties:
         CFBundleDisplayName: Token Counter
+        # Force xcodegen to write the version keys as build-setting
+        # substitutions instead of hardcoded 1.0 / 1 defaults. Without
+        # these, xcodegen's default Info.plist template ignores
+        # MARKETING_VERSION / CURRENT_PROJECT_VERSION entirely, which
+        # means every built IPA carries CFBundleShortVersionString=1.0
+        # and CFBundleVersion=1 regardless of project.yml or xcargs.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
           UIColorName: ""
           UIImageName: ""
