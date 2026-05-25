@@ -50,7 +50,34 @@ In <https://github.com/arunjeetsingh/token-tracker/settings/secrets/actions>, cr
 | --- | --- |
 | `APP_STORE_CONNECT_API_KEY_ID` | The 10-char Key ID from step 1 |
 | `APP_STORE_CONNECT_API_ISSUER_ID` | The UUID Issuer ID from step 1 |
-| `APP_STORE_CONNECT_API_KEY_B64` | `base64 -i AuthKey_XXXXXXX.p8 | pbcopy` then paste |
+| `APP_STORE_CONNECT_API_KEY_B64` | `base64 -i AuthKey_XXXXXXX.p8 \| pbcopy` then paste |
+| `MATCH_PASSWORD` | Encryption password for the cert storage repo (see *Cert storage with `match`* below) |
+| `MATCH_DEPLOY_KEY` | Full contents of the SSH private key (`secrets/match/deploy_key`) for the cert storage repo |
+
+## 3a. Cert storage with `fastlane match`
+
+Apple caps Distribution certificates at **3 per account**. The first iteration of this CI burned through that quota in two runs because each ephemeral CI keychain didn't have the existing cert's private key and asked Apple for a new one. `fastlane match` solves this by keeping a single cert + provisioning profile encrypted in a private git repo that CI clones on every run.
+
+**One-time setup (already done for this repo):**
+
+1. **Storage repo:** <https://github.com/arunjeetsingh/token-tracker-certs> — private, empty on first run; `match` populates it on the first successful CI invocation.
+2. **Read/write deploy key:** Generated locally, public half attached to `token-tracker-certs` via `gh repo deploy-key add`, private half stored as the `MATCH_DEPLOY_KEY` env secret on the `testflight` environment.
+3. **Encryption password:** Generated locally (32 random base64 chars), stored at `~/.openclaw/workspace/secrets/match/MATCH_PASSWORD` and copied into the `MATCH_PASSWORD` env secret.
+4. **Matchfile:** `ios/fastlane/Matchfile` points at the storage repo over SSH. Same config works locally (uses your normal GitHub SSH) and in CI (uses the deploy key via `ssh-agent`).
+
+**First CI run after the match migration:**
+- `match(type: "appstore", readonly: false)` finds the storage repo empty, calls ASC API to create a single new Apple Distribution cert + AppStore provisioning profile, encrypts them with `MATCH_PASSWORD`, and pushes them to `token-tracker-certs`.
+
+**Every subsequent CI run:**
+- `match` clones the storage repo, decrypts the existing cert + profile into the ephemeral CI keychain, and signs the build. **No new cert is created.** If Apple ever shows more than 1 Distribution cert in <https://developer.apple.com/account/resources/certificates/list>, something is misconfigured — see *Recovering from a cert quota error* below.
+
+**Local dev:**
+- `cd ios && fastlane match appstore --readonly` will fetch the same cert into your local keychain (assuming your GitHub SSH access can reach `token-tracker-certs`). You generally don't need this unless you're producing TestFlight-grade builds locally; Xcode's automatic signing with your paid team is fine for run-on-device.
+
+**Recovering from a cert quota error:**
+1. Revoke any extra certs at <https://developer.apple.com/account/resources/certificates/list> until 0 remain.
+2. Empty the storage repo: `cd ~/somewhere/token-tracker-certs && rm -rf certs profiles && git commit -am 'reset' && git push`.
+3. Re-run the TestFlight workflow. `match` will bootstrap a fresh cert and push it back to storage.
 
 ## 4. Trigger the workflow
 
