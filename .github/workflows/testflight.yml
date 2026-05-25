@@ -46,6 +46,25 @@ jobs:
       - name: Install fastlane
         run: brew install fastlane
 
+      - name: Configure SSH for fastlane match cert storage
+        # Load the deploy key for arunjeetsingh/token-tracker-certs into
+        # ssh-agent so `match` can clone (and on first run, push to) the
+        # private cert storage repo over SSH. The key is repo-scoped and
+        # has no access to anything else.
+        env:
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+          eval "$(ssh-agent -s)"
+          # Persist agent env so subsequent steps in the same job can use it.
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          printf '%s\n' "$MATCH_DEPLOY_KEY" | ssh-add -
+          ssh-add -l
+
       - name: Generate Xcode project
         working-directory: ios
         run: xcodegen generate
@@ -60,6 +79,8 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID:      ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_ISSUER_ID:   ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_B64:     ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          MATCH_PASSWORD:                    ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BRANCH:                  main
           FASTLANE_DISABLE_COLORS:           "1"
           FASTLANE_HIDE_TIMESTAMP:           "1"
           LANG:                              "en_US.UTF-8"

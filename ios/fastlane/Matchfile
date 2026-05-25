@@ -1,0 +1,28 @@
+# Matchfile — fastlane match configuration for TokenTracker.
+#
+# match keeps a single Apple Distribution certificate + provisioning profile
+# encrypted at rest in a private storage repo, so CI runs never burn through
+# the 3-cert-per-account quota.
+#
+# Storage: private GitHub repo arunjeetsingh/token-tracker-certs.
+# CI uses SSH (deploy key) so the same Matchfile works locally and in Actions
+# without HTTPS/PAT plumbing.
+#
+# Required env vars:
+#   MATCH_PASSWORD                    Encryption password for the storage repo.
+#   APP_STORE_CONNECT_API_KEY_ID      Read by Fastfile, passed via api_key.
+#   APP_STORE_CONNECT_API_ISSUER_ID   Read by Fastfile, passed via api_key.
+#   APP_STORE_CONNECT_API_KEY_B64     Read by Fastfile, passed via api_key.
+#   APP_IDENTIFIER                    Bundle id, e.g. ai.openclaw.tokentracker.TokenTracker.
+
+git_url("git@github.com:arunjeetsingh/token-tracker-certs.git")
+storage_mode("git")
+
+# Default to App Store distribution; override per lane if we ever need
+# development or ad-hoc profiles.
+type("appstore")
+
+app_identifier([ENV.fetch("APP_IDENTIFIER", "ai.openclaw.tokentracker.TokenTracker")])
+
+# Don't print full env on failure (the password would show up otherwise).
+verbose(false)
