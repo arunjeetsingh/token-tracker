@@ -41,4 +41,15 @@ struct Money: Hashable, Codable {
     static func += (lhs: inout Money, rhs: Money) {
         lhs = lhs + rhs
     }
+
+    /// Convert a Decimal USD amount (e.g. 19.8093 dollars) to Money. Rounds
+    /// to the nearest whole cent using bankers' rounding so half-cent splits
+    /// don't bias the running total.
+    static func fromDollars(_ dollars: Decimal) -> Money {
+        var scaled = dollars * 100
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &scaled, 0, .bankers)
+        let cents = (rounded as NSDecimalNumber).int64Value
+        return Money(cents: cents)
+    }
 }

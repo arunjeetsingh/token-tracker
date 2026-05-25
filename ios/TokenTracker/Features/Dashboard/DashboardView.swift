@@ -56,25 +56,37 @@ struct DashboardView: View {
             OnboardingView(onSubmit: { key in
                 await viewModel.connect(using: key)
             })
-        case .loaded(let amount, let asOf, let orgName):
-            loadedView(amount: amount, asOf: asOf, orgName: orgName)
+        case .loaded(let report, let orgName):
+            loadedView(report: report, orgName: orgName)
         case .failed(let message):
             errorView(message: message)
         }
     }
 
-    private func loadedView(amount: Money, asOf: Date, orgName: String) -> some View {
+    private func loadedView(report: MTDCost, orgName: String) -> some View {
         VStack(spacing: 12) {
             Spacer()
             Text(orgName)
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text(amount.formatted())
+            Text(report.total.formatted())
                 .font(.system(size: 64, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-            Text("Month to date · as of \(asOf, style: .time)")
+            Text("Month to date · as of \(report.asOf, style: .time)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if report.hasTodayEstimate {
+                Text("Includes ~\(report.todayEstimatedCost.formatted()) estimated for today")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if report.hasUnpricedModels {
+                Text("⚠️ Estimate excludes: \(report.unpricedModels.joined(separator: ", "))")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
             Spacer()
         }
     }

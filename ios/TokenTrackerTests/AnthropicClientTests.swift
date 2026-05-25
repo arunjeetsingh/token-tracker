@@ -69,6 +69,113 @@ final class AnthropicClientTests: XCTestCase {
         XCTAssertEqual(callCount, 2)
     }
 
+    func testTodayEstimatedCostFromUsageReport() async throws {
+        // Hourly bucket with all 5 token lanes on opus-4-7. Pricing × tokens
+        // should land at exactly 19.8093 (matches our live probe).
+        let body = """
+        {
+          "data": [
+            {"starting_at":"2026-05-24T14:00:00Z","ending_at":"2026-05-24T15:00:00Z",
+             "results":[{
+               "model":"claude-opus-4-7",
+               "uncached_input_tokens":240,
+               "cache_creation":{"ephemeral_5m_input_tokens":2033453,"ephemeral_1h_input_tokens":0},
+               "cache_read_input_tokens":11185860,
+               "output_tokens":60244,
+               "server_tool_use":{"web_search_requests":0}
+             }]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        var capturedURL: URL?
+        MockURLProtocol.responder = { request in
+            capturedURL = request.url
+            return (200, Data(body.utf8))
+        }
+        let client = makeClient()
+        let estimate = try await client.todayEstimatedCost()
+        XCTAssertEqual(estimate.cost.cents, 1981) // $19.81 rounded
+        XCTAssertTrue(estimate.unpricedModels.isEmpty)
+        // Confirm we hit the right endpoint and asked for hourly buckets grouped by model.
+        let urlStr = capturedURL?.absoluteString ?? ""
+        XCTAssertTrue(urlStr.contains("/v1/organizations/usage_report/messages"))
+        XCTAssertTrue(urlStr.contains("bucket_width=1h"))
+        XCTAssertTrue(urlStr.contains("group_by%5B%5D=model") || urlStr.contains("group_by[]=model"))
+    }
+
+    func testTodayEstimateReportsUnpricedModels() async throws {
+        let body = """
+        {
+          "data": [
+            {"starting_at":"2026-05-24T14:00:00Z","ending_at":"2026-05-24T15:00:00Z",
+             "results":[{
+               "model":"claude-future-9000",
+               "uncached_input_tokens":1000,
+               "cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},
+               "cache_read_input_tokens":0,
+               "output_tokens":500,
+               "server_tool_use":{"web_search_requests":0}
+             }]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        MockURLProtocol.responder = { _ in (200, Data(body.utf8)) }
+        let estimate = try await makeClient().todayEstimatedCost()
+        XCTAssertEqual(estimate.cost.cents, 0)
+        XCTAssertEqual(estimate.unpricedModels, ["claude-future-9000"])
+    }
+
+    func testMonthToDateCombinesFinalizedAndEstimate() async throws {
+        // Two endpoints, dispatch by path.
+        // amount is in cents (per Anthropic's quirk); 50000 cents = $500.00
+        let costPage = """
+        {
+          "data": [
+            {"starting_at":"2026-05-01T00:00:00Z","ending_at":"2026-05-02T00:00:00Z",
+             "results":[{"currency":"USD","amount":"50000.00"}]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        let usagePage = """
+        {
+          "data": [
+            {"starting_at":"2026-05-24T14:00:00Z","ending_at":"2026-05-24T15:00:00Z",
+             "results":[{
+               "model":"claude-opus-4-7",
+               "uncached_input_tokens":240,
+               "cache_creation":{"ephemeral_5m_input_tokens":2033453,"ephemeral_1h_input_tokens":0},
+               "cache_read_input_tokens":11185860,
+               "output_tokens":60244,
+               "server_tool_use":{"web_search_requests":0}
+             }]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        MockURLProtocol.responder = { request in
+            let path = request.url?.path ?? ""
+            if path.contains("cost_report") {
+                return (200, Data(costPage.utf8))
+            }
+            return (200, Data(usagePage.utf8))
+        }
+        // Pick a "now" mid-month so finalized window is non-empty.
+        let now = ISO8601DateFormatter().date(from: "2026-05-24T14:30:00Z")!
+        let report = try await makeClient().monthToDateCost(now: now)
+        XCTAssertEqual(report.finalizedCost.cents, 50000)         // $500.00
+        XCTAssertEqual(report.todayEstimatedCost.cents, 1981)     // $19.81 estimate
+        XCTAssertEqual(report.total.cents, 51981)                 // $519.81
+        XCTAssertTrue(report.hasTodayEstimate)
+        XCTAssertFalse(report.hasUnpricedModels)
+    }
+
     func testHTTPErrorSurfacesBody() async {
         MockURLProtocol.responder = { _ in
             (401, Data(#"{"error":"unauthorized"}"#.utf8))
