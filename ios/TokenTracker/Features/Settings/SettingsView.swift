@@ -36,7 +36,7 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("App", value: appVersion)
-                    Link("Anthropic Console", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
+                    Link("Anthropic Admin Keys", destination: URL(string: "https://console.anthropic.com/settings/admin-keys")!)
                 }
             }
             .navigationTitle("Settings")

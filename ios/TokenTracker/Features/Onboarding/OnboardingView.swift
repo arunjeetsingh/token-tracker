@@ -20,7 +20,10 @@ struct OnboardingView: View {
     @State private var submitError: String?
     @State private var revealKey = false
 
-    private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!  // swiftlint:disable:this force_unwrapping
+    // Deep-link straight to the Admin Keys page so users don't end up on the
+    // regular API Keys page (which produces `sk-ant-api...` keys, not the
+    // `sk-ant-admin01-...` keys the cost reporting API requires).
+    private let consoleURL = URL(string: "https://console.anthropic.com/settings/admin-keys")!  // swiftlint:disable:this force_unwrapping
 
     var body: some View {
         ScrollView {
@@ -63,27 +66,32 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepCard(
                 number: 1,
-                title: "Open Anthropic Console",
-                detail: "Tap the button to sign in to console.anthropic.com inside this app.",
+                title: "Make sure you have an organization",
+                detail: "Admin keys are only available on **organizational** Anthropic accounts. If your console says “Individual” under your name, open **Settings → Organization** in the Console and create one before continuing — it takes a minute and is free."
+            )
+            stepCard(
+                number: 2,
+                title: "Open the Admin Keys page",
+                detail: "Tap the button to sign in to console.anthropic.com inside this app. You'll land directly on the Admin Keys page.",
                 action: AnyView(
                     Button {
                         showSafari = true
                     } label: {
-                        Label("Open Console", systemImage: "safari")
+                        Label("Open Admin Keys", systemImage: "safari")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                 )
             )
             stepCard(
-                number: 2,
+                number: 3,
                 title: "Create an Admin key",
-                detail: "Go to **Settings → API Keys → Admin Keys → Create Key**. Name it “Token Counter”."
+                detail: "Tap **+ Create admin key**. Name it “Token Counter”. (Admin keys are different from regular API keys — they start with `sk-ant-admin01-…` instead of `sk-ant-api03-…`.)"
             )
             stepCard(
-                number: 3,
+                number: 4,
                 title: "Copy the key",
-                detail: "Tap **Copy**. It starts with `sk-ant-admin01-…` — come back here and we'll auto-detect it."
+                detail: "Tap **Copy**. Come back here and we'll auto-detect it from your clipboard."
             )
         }
     }
