@@ -118,15 +118,15 @@ Caption ideas (top of each screenshot, App Store overlay style):
 
 ## Review notes (App Review demo account / instructions field)
 
-> Token Counter is a client-side viewer for an Anthropic API account's usage and cost data. It does not have a backend. To exercise the full feature set during review, the reviewer will need an Anthropic Admin API key (`***-…`) for an organizational Anthropic account.
+> **Demo Mode for App Review**
 >
-> A demo Admin API key for App Review use is provided in the "Demo Account" field below. The key has read-only Cost and Usage scopes on a low-volume test organization.
+> Token Counter is a thin client for the Anthropic API. The full experience requires an Anthropic organization Admin API key, which Apple Reviewers won't have. To exercise the full UI without a real Anthropic account, we've provided a **Demo Mode** activated by a magic key:
 >
-> Onboarding walks through:
-> 1. Confirming the reviewer has an organizational Anthropic account (in-app link to https://console.anthropic.com/settings/organization).
-> 2. Creating an Admin key at https://console.anthropic.com/settings/admin-keys.
-> 3. Pasting the key (auto-detected from clipboard).
+> 1. Launch Token Counter.
+> 2. Tap through onboarding to the "Paste your Admin key" step.
+> 3. Paste: `sk-ant-demo-2026-05-w22`
+> 4. Tap Connect.
 >
-> All UI states (loading, empty, error, success) are reachable from the home screen once a key is connected. Tap "Disconnect" in Settings to wipe the key and return to onboarding.
-
-(We'll need to provision a low-scope demo admin key for App Review — TBD.)
+> The app will switch to Demo Mode (a small "DEMO" pill is visible in the dashboard nav bar), showing a canned month-to-date cost report with realistic numbers. Demo Mode persists across app launches. To exit, tap the gear icon → Disconnect.
+>
+> Demo Mode is implemented entirely client-side and reaches no network. The real network code paths (Anthropic API, Keychain storage) are exercised when a reviewer chooses to paste a real Admin key instead.

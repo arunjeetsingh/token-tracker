@@ -29,12 +29,17 @@ struct DashboardView: View {
     private var toolbar: some ToolbarContent {
         if viewModel.state.isLoaded {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await viewModel.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                HStack(spacing: 8) {
+                    if DemoMode.isEnabled {
+                        demoPill
+                    }
+                    Button {
+                        Task { await viewModel.refresh() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh")
                 }
-                .accessibilityLabel("Refresh")
             }
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -45,6 +50,20 @@ struct DashboardView: View {
                 .accessibilityLabel("Settings")
             }
         }
+    }
+
+    // Small, understated "DEMO" indicator so reviewers (and ourselves)
+    // can see at a glance that the dashboard is showing canned data.
+    // Apple wants transparency, not a billboard — hence caption2 + pill.
+    private var demoPill: some View {
+        Text("DEMO")
+            .font(.caption2.bold())
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange.opacity(0.2))
+            .foregroundStyle(.orange)
+            .clipShape(Capsule())
+            .accessibilityLabel("Demo mode")
     }
 
     @ViewBuilder

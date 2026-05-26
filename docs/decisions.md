@@ -4,6 +4,25 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-26 — ADR-009: Demo Mode for App Reviewers via magic key string
+
+**Context:** App Store review requires reviewers to exercise the full app. Token Counter's full UI depends on a live Anthropic Admin API key against a real organizational account — something Apple Reviewers won't (and shouldn't have to) provision. v0.2 shipped without a story here; the listing's "Review notes" section had a TBD.
+
+**Options considered:**
+  - **A:** Stand up a low-scope demo Anthropic organization, mint a real Admin key with read-only Cost/Usage scopes, paste it into App Store Connect's "Demo Account" field. Real network paths, but: (i) Anthropic doesn't actually offer scoped-down admin keys (admin = full org read/write), (ii) every reviewer using the same key risks accidental key exposure, (iii) requires us to maintain billing on a demo org indefinitely.
+  - **B:** Embed a magic key string in the app. When the reviewer pastes it during onboarding, the app short-circuits to Demo Mode against canned data, with a visible "DEMO" indicator. Persists across relaunch (App Review will kill+relaunch). Clears on Disconnect.
+  - **C:** Ship a separate "reviewer build" via TestFlight that hardcodes demo mode. Forks the build matrix and risks the wrong build landing on the App Store.
+
+**Decision:** Option B. Magic key value embedded in source as `DemoMode.appReviewKey`. Format `sk-ant-demo-YYYY-MM-wWW` so we can rotate per release iteration if it ever leaks. Persisted in `UserDefaults` (not Keychain — demo state, not a credential). A small "DEMO" pill in the dashboard nav bar makes the mode unambiguous to Apple's reviewers and to ourselves.
+
+**Why B over A:** Zero infrastructure, zero recurring cost, no real key can leak, and the demo data is deterministic across reviewers — which makes the experience reviewable in the first place.
+
+**Risk accepted:** A determined user could decompile the IPA and find the magic string, then activate demo mode locally. That's harmless — demo mode shows canned data and reaches no network. Rotation per release is just hygiene.
+
+**Compatibility:** Existing launch-arg-driven `DemoMode` (used by the screenshot capture script) is untouched. `isEnabled` now returns true for either entry point. Disconnect clears the persisted flag before falling through to the existing Keychain-wipe path.
+
+---
+
 ## 2026-05-24 — ADR-008: Onboarding UX = polished admin-key paste (Option B), not cookie scraping
 
 **Context:** First TestFlight build (v0.1.0) shipped with a bare SecureField asking for an admin key — zero context, scary. Three real paths to better UX:
