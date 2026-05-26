@@ -118,16 +118,28 @@ actor AnthropicClient {
 
     /// Aggregated cost_report result: one entry per UTC day, and a
     /// per-(model, day) breakdown. Both come from the same paginated
-    /// `/v1/organizations/cost_report` response grouped by model.
+    /// `/v1/organizations/cost_report` response grouped by description.
+    /// (We can't ask for `group_by[]=model` directly — that endpoint only
+    /// accepts `workspace_id` or `description`. Grouping by description
+    /// returns one row per (model, token_type, cost_type, …) tuple per
+    /// day; we then fold them on the client.)
     struct CostDetail: Equatable {
         let daily: [DailySpend]
         /// modelId -> per-day costs (sorted by date asc).
         let perModel: [String: [DailySpend]]
     }
 
-    /// Pulls `cost_report` for the given window, grouped by model, and
-    /// aggregates the response into a (daily total, per-model daily)
+    /// Pulls `cost_report` for the given window, grouped by description,
+    /// and aggregates the response into a (daily total, per-model daily)
     /// projection. One network sweep, two views of the same data.
+    ///
+    /// Anthropic's `cost_report` rejects `group_by[]=model` with HTTP 400
+    /// ("Valid options are \"description\", \"workspace_id\""). Grouping
+    /// by description gives us the per-model split for free because each
+    /// description-bucketed row carries its `model` field — except for
+    /// non-token cost rows like `web_search` / `code_execution` which have
+    /// `model: null`. Those still contribute to the daily total but get
+    /// dropped from the per-model breakdown (no single model to attribute).
     func costDetail(start: Date, end: Date) async throws -> CostDetail {
         let isoOut = ISO8601DateFormatter()
         isoOut.formatOptions = [.withInternetDateTime]
@@ -139,8 +151,10 @@ actor AnthropicClient {
             // we set it explicitly so we don't drift if Anthropic flips the
             // default later.)
             ("bucket_width", "1d"),
-            // Per-model split for the dashboard breakdown widget.
-            ("group_by[]", "model")
+            // `cost_report` only accepts `description` or `workspace_id`
+            // for group_by[]. Description gives us per-(model, token_type,
+            // cost_type, …) granularity, which we re-aggregate below.
+            ("group_by[]", "description")
         ]
         var dailyTotals: [Date: Money] = [:]
         var perModel: [String: [Date: Money]] = [:]
