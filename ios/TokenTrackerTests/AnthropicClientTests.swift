@@ -177,21 +177,34 @@ final class AnthropicClientTests: XCTestCase {
     }
 
     func testCostReportPopulatesDailyAndModelBreakdown() async throws {
-        // Two days, two models per day. cost_report grouped by model returns
-        // one row per (day, model). Sparkline gets daily sums, breakdown
-        // gets per-model sums across the window.
+        // Two days, two models per day. cost_report is grouped by
+        // `description`, which fans out one row per (model, token_type,
+        // cost_type, context_window, service_tier, inference_geo) tuple
+        // per day. Multiple rows with the same model on the same day must
+        // sum together on the client.
         let body = """
         {
           "data": [
             {"starting_at":"2026-05-20T00:00:00Z","ending_at":"2026-05-21T00:00:00Z",
              "results":[
-               {"currency":"USD","amount":"30000.00","model":"claude-opus-4-7"},
-               {"currency":"USD","amount":"10000.00","model":"claude-sonnet-4-5"}
+               {"currency":"USD","amount":"20000.00","model":"claude-opus-4-7",
+                "token_type":"uncached_input_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"},
+               {"currency":"USD","amount":"10000.00","model":"claude-opus-4-7",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"},
+               {"currency":"USD","amount":"10000.00","model":"claude-sonnet-4-5",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"}
              ]},
             {"starting_at":"2026-05-21T00:00:00Z","ending_at":"2026-05-22T00:00:00Z",
              "results":[
-               {"currency":"USD","amount":"50000.00","model":"claude-opus-4-7"},
-               {"currency":"USD","amount":"15000.00","model":"claude-haiku-4-5"}
+               {"currency":"USD","amount":"50000.00","model":"claude-opus-4-7",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"},
+               {"currency":"USD","amount":"15000.00","model":"claude-haiku-4-5",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"}
              ]}
           ],
           "has_more": false,
@@ -208,36 +221,95 @@ final class AnthropicClientTests: XCTestCase {
         let end = ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
         let detail = try await client.costDetail(start: start, end: end)
 
-        // Two days, sorted chronologically.
+        // Two days, sorted chronologically. Day 1 has two opus rows that
+        // must fold together (20000 + 10000 = 30000 cents for opus).
         XCTAssertEqual(detail.daily.count, 2)
-        XCTAssertEqual(detail.daily[0].cost.cents, 30000 + 10000) // $400
-        XCTAssertEqual(detail.daily[1].cost.cents, 50000 + 15000) // $650
-        // Per-model totals across the window.
+        XCTAssertEqual(detail.daily[0].cost.cents, 20000 + 10000 + 10000) // $400
+        XCTAssertEqual(detail.daily[1].cost.cents, 50000 + 15000)         // $650
+        // Per-model totals across the window. Same-(day, model) rows are summed.
         XCTAssertEqual(detail.perModel["claude-opus-4-7"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 80000)
         XCTAssertEqual(detail.perModel["claude-sonnet-4-5"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 10000)
         XCTAssertEqual(detail.perModel["claude-haiku-4-5"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 15000)
+        // Opus on day 1 should be exactly one DailySpend entry (the two
+        // rows must have folded into one).
+        XCTAssertEqual(detail.perModel["claude-opus-4-7"]?.count, 2)
+        XCTAssertEqual(detail.perModel["claude-opus-4-7"]?.first?.cost.cents, 30000)
 
-        // Confirm we asked for daily buckets grouped by model.
+        // Confirm we asked for daily buckets grouped by description
+        // (NOT model — that's what the API rejects).
         let urlStr = capturedURL?.absoluteString ?? ""
         XCTAssertTrue(urlStr.contains("bucket_width=1d"))
-        XCTAssertTrue(urlStr.contains("group_by%5B%5D=model") || urlStr.contains("group_by[]=model"))
+        XCTAssertTrue(urlStr.contains("group_by%5B%5D=description") || urlStr.contains("group_by[]=description"))
+        XCTAssertFalse(urlStr.contains("group_by%5B%5D=model"), "cost_report rejects group_by[]=model with HTTP 400")
+    }
+
+    /// Regression: when grouped by `description`, cost_report emits rows
+    /// for non-token cost types (web_search, code_execution, …) with
+    /// `model: null`. These must:
+    ///   1. NOT appear in the per-model breakdown (no single model to
+    ///      attribute the cost to).
+    ///   2. Still contribute to the daily total (so the sparkline and the
+    ///      finalized MTD figure include ALL costs, not just tokens).
+    func testCostReportFoldsModelNullCostRowsIntoDailyTotalOnly() async throws {
+        let body = """
+        {
+          "data": [
+            {"starting_at":"2026-05-20T00:00:00Z","ending_at":"2026-05-21T00:00:00Z",
+             "results":[
+               {"currency":"USD","amount":"40000.00","model":"claude-opus-4-7",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"},
+               {"currency":"USD","amount":"500.00","model":null,
+                "token_type":null,"cost_type":"web_search",
+                "context_window":null,"service_tier":null,"inference_geo":"global",
+                "description":"Web search requests"}
+             ]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        MockURLProtocol.responder = { _ in (200, Data(body.utf8)) }
+        let client = makeClient()
+        let start = ISO8601DateFormatter().date(from: "2026-05-20T00:00:00Z")!
+        let end = ISO8601DateFormatter().date(from: "2026-05-21T00:00:00Z")!
+        let detail = try await client.costDetail(start: start, end: end)
+
+        // Daily total includes BOTH the token row and the web_search row.
+        XCTAssertEqual(detail.daily.count, 1)
+        XCTAssertEqual(detail.daily[0].cost.cents, 40000 + 500) // $405.00
+        // Per-model breakdown includes ONLY the token row (the model=null
+        // web_search row has no model to attribute to).
+        XCTAssertEqual(detail.perModel.count, 1)
+        XCTAssertEqual(detail.perModel["claude-opus-4-7"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 40000)
+        XCTAssertNil(detail.perModel[""], "empty-string model must not appear as a key")
     }
 
     func testMonthToDateExposesSparklineAndBreakdown() async throws {
         // cost_report covers the 30-day sparkline window. Hero MTD is the
         // in-month subset; breakdown is also in-month per model.
+        // Description-grouped cost_report: one row per (model, token_type,
+        // cost_type, …) tuple per day. Client re-aggregates per (day, model).
         let costPage = """
         {
           "data": [
             {"starting_at":"2026-05-20T00:00:00Z","ending_at":"2026-05-21T00:00:00Z",
              "results":[
-               {"currency":"USD","amount":"30000.00","model":"claude-opus-4-7"},
-               {"currency":"USD","amount":"10000.00","model":"claude-sonnet-4-5"}
+               {"currency":"USD","amount":"30000.00","model":"claude-opus-4-7",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"},
+               {"currency":"USD","amount":"10000.00","model":"claude-sonnet-4-5",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"}
              ]},
             {"starting_at":"2026-05-21T00:00:00Z","ending_at":"2026-05-22T00:00:00Z",
              "results":[
-               {"currency":"USD","amount":"50000.00","model":"claude-opus-4-7"},
-               {"currency":"USD","amount":"15000.00","model":"claude-haiku-4-5"}
+               {"currency":"USD","amount":"50000.00","model":"claude-opus-4-7",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"},
+               {"currency":"USD","amount":"15000.00","model":"claude-haiku-4-5",
+                "token_type":"output_tokens","cost_type":"tokens",
+                "context_window":"0-200k","service_tier":"standard","inference_geo":"global"}
              ]}
           ],
           "has_more": false,
