@@ -4,6 +4,32 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-26 — ADR-011: Dashboard hero composition (sparkline + top models)
+
+**Context:** The v0.2 dashboard rendered as one giant MTD dollar figure floating in white space. PR #23's commit message explicitly flagged this as "mostly empty space" for the App Store hero shot. The screen needs more visual interest — both for marketing and as a real product, because power users want some sense of trend and where the money is going, not just "$X this month."
+
+**Options considered:**
+  - **A:** Today-vs-yesterday delta pill ("+12% vs yesterday"). Cheap to build, but a single number doesn't fill the empty space and isn't differentiated — every finance app has this.
+  - **B:** Full chart with axes, legend, multiple series, time-range picker. Substantial UI work and visually heavy; clashes with the app's minimalist single-number aesthetic.
+  - **C:** Drop in a charts library (Swift Charts or third-party). Adds a dependency and pulls in axis/legend chrome we'd then need to hide.
+  - **D:** Stocks-app-style sparkline (no axes, no labels) + small top-3 models breakdown list. Information-dense, native SwiftUI `Path`, no dependency, matches the existing visual restraint.
+
+**Decision:** Option D. A 30-day finalized-spend sparkline sits below the hero number with a "Last 30 days" caption, followed by a "TOP MODELS" section listing the three highest-cost models month-to-date in iOS Settings-style rows. Both are populated from the same single `cost_report` call (now grouped by model) — no extra network round-trips, no extra battery.
+
+**Implementation notes:**
+  - `AnthropicClient.costDetail(start:end:)` is the new single source of truth; both `monthToDateCost` and `totalCost` route through it.
+  - The sparkline window is the trailing 30 days, even when MTD only covers a few days. That's deliberate: users early in the month would otherwise see a 3-point chart, which looks broken.
+  - Today is intentionally excluded from the sparkline. It's the intraday estimate; folding it in would swing the last point wildly throughout the day.
+  - Model breakdown is in-month only, matching the hero number's scope.
+  - Display-name parsing (`claude-opus-4-7` -> `Claude Opus 4.7`) lives next to the client; unknown ids fall through unchanged so the UI never drops a row silently.
+
+**Tradeoffs accepted:**
+  - One additional query parameter (`group_by[]=model`) on the cost_report call. Anthropic's API already returns this shape; we just ask for the splits.
+  - Sparkline auto-scales y-axis per render; absolute spending levels aren't comparable across screenshots. That's fine — it's a trend indicator, not a measuring tape.
+  - If a user has fewer than 2 days of data, the sparkline falls back to a placeholder rounded rectangle instead of crashing or showing a single dot. The top-models block hides entirely on empty data.
+
+---
+
 ## 2026-05-26 — ADR-010: Caption overlay strategy for App Store screenshots
 
 **Context:** Apple App Store screenshots benefit from editorial captions — a short headline that tells the prospect what the screen does before they read the UI. We have two reviewer-grade screenshots (dashboard, onboarding) captured at the two required sizes (6.9" 1320×2868 and 6.5" 1242×2688). The dashboard has a generous top white zone; the onboarding has very little.

@@ -75,18 +75,47 @@ enum DemoMode {
     ///   - Use a generic org name ("Personal") so the screenshot doesn't
     ///     telegraph 'this is fake demo data'
     static func snapshot(now: Date = Date()) -> (orgName: String, report: MTDCost) {
-        let finalized = Money(cents: 4_847_23)        // $4,847.23
         let todayEstimate = Money(cents: 312_88)      // $312.88
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let finalizedThrough = calendar.startOfDay(for: now)
+
+        // 30 days of canned daily spend in cents — noisy but trending up,
+        // "we're scaling" vibe. Sum ~= $7,800. Hero finalized is set to
+        // exactly this sum so the sparkline + hero stay consistent.
+        let dailyCents: [Int64] = [
+            10_523, 11_247, 12_891,  9_856, 14_203, 15_672, 13_941, 16_808, 18_234, 17_456,
+            19_872, 21_034, 20_156, 22_890, 24_561, 23_445, 26_012, 27_889, 25_678, 29_234,
+            31_456, 30_123, 32_890, 34_567, 33_245, 35_678, 37_234, 36_012, 38_901, 40_234
+        ]
+        let daily: [DailySpend] = dailyCents.enumerated().map { idx, c in
+            let date = calendar.date(byAdding: .day, value: -(dailyCents.count - 1 - idx), to: finalizedThrough)!
+            return DailySpend(date: date, cost: Money(cents: c))
+        }
+        let finalizedSum = dailyCents.reduce(Int64(0), +)
+        let finalized = Money(cents: finalizedSum)
+
+        // Top-3 models: ~55% / ~30% / ~15% of the finalized total.
+        // Use integer cent arithmetic; assign the rounding remainder to
+        // the largest bucket so the three sum exactly to `finalized`.
+        let opusCents = Int64(Double(finalizedSum) * 0.55)
+        let sonnetCents = Int64(Double(finalizedSum) * 0.30)
+        let haikuCents = Int64(Double(finalizedSum) * 0.15)
+        let remainder = finalizedSum - (opusCents + sonnetCents + haikuCents)
+        let modelBreakdown: [ModelSpend] = [
+            .init(modelId: "claude-opus-4-5",   displayName: "Claude Opus 4.5",   cost: Money(cents: opusCents + remainder)),
+            .init(modelId: "claude-sonnet-4-5", displayName: "Claude Sonnet 4.5", cost: Money(cents: sonnetCents)),
+            .init(modelId: "claude-haiku-4-5",  displayName: "Claude Haiku 4.5",  cost: Money(cents: haikuCents))
+        ]
 
         let report = MTDCost(
             finalizedCost: finalized,
             todayEstimatedCost: todayEstimate,
             unpricedModels: [],
             finalizedThrough: finalizedThrough,
-            asOf: now
+            asOf: now,
+            dailySpend: daily,
+            modelBreakdown: modelBreakdown
         )
         return (orgName: "Personal", report: report)
     }

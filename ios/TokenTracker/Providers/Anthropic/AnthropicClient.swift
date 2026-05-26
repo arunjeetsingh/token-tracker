@@ -52,15 +52,45 @@ actor AnthropicClient {
     func monthToDateCost(now: Date = Date()) async throws -> MTDCost {
         let startOfMonth = Self.startOfMonth(utc: now)
         let startOfTodayUTC = Self.startOfDay(utc: now)
+        // Sparkline window: prefer the trailing 30 days of finalized data
+        // (start-of-day 30d ago, UTC). When the user is early in the month
+        // that means we'll pull a few days from the previous month — which
+        // is exactly what we want for the dashboard sparkline ("last 30
+        // days of spend") even though the hero number remains MTD only.
+        var cal = Calendar(identifier: .iso8601)
+        cal.timeZone = TimeZone(identifier: "UTC")! // swiftlint:disable:this force_unwrapping
+        let sparklineStart = cal.date(byAdding: .day, value: -30, to: startOfTodayUTC) ?? startOfMonth
 
-        // Finalized cost: closed UTC days only.
-        let finalized: Money
-        if startOfTodayUTC > startOfMonth {
-            finalized = try await totalCost(start: startOfMonth, end: startOfTodayUTC)
+        // Per-day + per-model breakdown for the sparkline range. Sparkline
+        // and model breakdown both come from this single response — one
+        // network round-trip, one source of truth. The MTD finalized total
+        // is also derived from this, restricted to the in-month subset.
+        let detail: CostDetail
+        if startOfTodayUTC > sparklineStart {
+            detail = try await costDetail(start: sparklineStart, end: startOfTodayUTC)
         } else {
-            // First of the month, UTC — no closed days yet.
-            finalized = .zero
+            detail = CostDetail(daily: [], perModel: [:])
         }
+        // Hero MTD finalized = sum of daily buckets that fall within this
+        // calendar month (cost_report buckets are UTC-day-aligned).
+        var finalized = Money.zero
+        for d in detail.daily where d.date >= startOfMonth {
+            finalized += d.cost
+        }
+        // Model breakdown: also restrict to in-month for hero consistency.
+        var monthModels: [String: Money] = [:]
+        for (key, perDay) in detail.perModel {
+            var total = Money.zero
+            for d in perDay where d.date >= startOfMonth {
+                total += d.cost
+            }
+            if total.cents > 0 {
+                monthModels[key] = total
+            }
+        }
+        let modelBreakdown = monthModels
+            .map { ModelSpend(modelId: $0.key, displayName: Self.displayName(forModelId: $0.key), cost: $0.value) }
+            .sorted { $0.cost.cents > $1.cost.cents }
 
         // Today's intra-day estimate (may include unpriced models).
         let today = try await todayEstimatedCost(now: now)
@@ -70,38 +100,126 @@ actor AnthropicClient {
             todayEstimatedCost: today.cost,
             unpricedModels: today.unpricedModels,
             finalizedThrough: startOfTodayUTC,
-            asOf: now
+            asOf: now,
+            dailySpend: detail.daily,
+            modelBreakdown: modelBreakdown
         )
     }
 
     /// Sums every row across paginated cost_report results.
     func totalCost(start: Date, end: Date) async throws -> Money {
+        let detail = try await costDetail(start: start, end: end)
+        var total = Money.zero
+        for d in detail.daily {
+            total += d.cost
+        }
+        return total
+    }
+
+    /// Aggregated cost_report result: one entry per UTC day, and a
+    /// per-(model, day) breakdown. Both come from the same paginated
+    /// `/v1/organizations/cost_report` response grouped by model.
+    struct CostDetail: Equatable {
+        let daily: [DailySpend]
+        /// modelId -> per-day costs (sorted by date asc).
+        let perModel: [String: [DailySpend]]
+    }
+
+    /// Pulls `cost_report` for the given window, grouped by model, and
+    /// aggregates the response into a (daily total, per-model daily)
+    /// projection. One network sweep, two views of the same data.
+    func costDetail(start: Date, end: Date) async throws -> CostDetail {
         let isoOut = ISO8601DateFormatter()
         isoOut.formatOptions = [.withInternetDateTime]
-        var query: [String: String] = [
-            "starting_at": isoOut.string(from: start),
-            "ending_at": isoOut.string(from: end)
+        var query: [(String, String)] = [
+            ("starting_at", isoOut.string(from: start)),
+            ("ending_at", isoOut.string(from: end)),
+            // 24h buckets give us one row per UTC day — exactly what the
+            // sparkline wants. (Default bucket_width is already daily, but
+            // we set it explicitly so we don't drift if Anthropic flips the
+            // default later.)
+            ("bucket_width", "1d"),
+            // Per-model split for the dashboard breakdown widget.
+            ("group_by[]", "model")
         ]
-
-        var total = Money.zero
+        var dailyTotals: [Date: Money] = [:]
+        var perModel: [String: [Date: Money]] = [:]
         var pageGuard = 0
         while true {
             pageGuard += 1
             precondition(pageGuard < 200, "cost_report pagination guard tripped")
-            let req = try request(path: "/v1/organizations/cost_report", query: query)
+            let req = try request(path: "/v1/organizations/cost_report", queryPairs: query)
             let (data, _) = try await session.dataAndThrowOnHTTPError(req)
             let page = try decoder.decode(AnthropicAPI.CostReportPage.self, from: data)
             for bucket in page.data {
+                let day = bucket.startingAt
                 for row in bucket.results {
-                    if let money = Money.fromAnthropicCentsString(row.amount) {
-                        total += money
+                    guard let money = Money.fromAnthropicCentsString(row.amount) else { continue }
+                    dailyTotals[day, default: .zero] += money
+                    if let model = row.model, !model.isEmpty {
+                        var perDay = perModel[model] ?? [:]
+                        perDay[day, default: .zero] += money
+                        perModel[model] = perDay
                     }
                 }
             }
             guard page.hasMore, let next = page.nextPage else { break }
-            query["page"] = next
+            query = query.filter { $0.0 != "page" }
+            query.append(("page", next))
         }
-        return total
+        let daily = dailyTotals
+            .map { DailySpend(date: $0.key, cost: $0.value) }
+            .sorted { $0.date < $1.date }
+        let perModelArr = perModel.mapValues { dict in
+            dict
+                .map { DailySpend(date: $0.key, cost: $0.value) }
+                .sorted { $0.date < $1.date }
+        }
+        return CostDetail(daily: daily, perModel: perModelArr)
+    }
+
+    /// Best-effort pretty name for Anthropic model ids that appear in the
+    /// cost_report (e.g. `claude-opus-4-7` -> `Claude Opus 4.7`). When the
+    /// id doesn't match a known pattern we fall back to the raw id so the
+    /// UI never silently drops a row.
+    static func displayName(forModelId id: String) -> String {
+        let lower = id.lowercased()
+        // Patterns: claude-<family>-<major>-<minor>[-suffix]
+        struct Family { let key: String; let label: String }
+        let families: [Family] = [
+            .init(key: "opus",   label: "Claude Opus"),
+            .init(key: "sonnet", label: "Claude Sonnet"),
+            .init(key: "haiku",  label: "Claude Haiku")
+        ]
+        for fam in families {
+            // claude-<fam>-X-Y...
+            let prefix = "claude-\(fam.key)-"
+            if lower.hasPrefix(prefix) {
+                let rest = lower.dropFirst(prefix.count)
+                let parts = rest.split(separator: "-").prefix(2).map(String.init)
+                if parts.count == 2, Int(parts[0]) != nil, Int(parts[1]) != nil {
+                    return "\(fam.label) \(parts[0]).\(parts[1])"
+                }
+                if parts.count >= 1, Int(parts[0]) != nil {
+                    return "\(fam.label) \(parts[0])"
+                }
+            }
+            // claude-3-5-sonnet etc.
+            if lower.contains("-\(fam.key)") {
+                // Strip leading "claude-" then find the major.minor before family.
+                let stripped = lower.hasPrefix("claude-") ? String(lower.dropFirst("claude-".count)) : lower
+                let segs = stripped.split(separator: "-").map(String.init)
+                if let famIdx = segs.firstIndex(of: fam.key), famIdx >= 2,
+                   Int(segs[famIdx - 2]) != nil, Int(segs[famIdx - 1]) != nil {
+                    return "\(fam.label) \(segs[famIdx - 2]).\(segs[famIdx - 1])"
+                }
+                if let famIdx = segs.firstIndex(of: fam.key), famIdx >= 1,
+                   Int(segs[famIdx - 1]) != nil {
+                    return "\(fam.label) \(segs[famIdx - 1])"
+                }
+            }
+        }
+        return id
     }
 
     // MARK: - private
@@ -229,6 +347,26 @@ extension AnthropicClient {
     }
 }
 
+/// One UTC-day bucket of finalized spend. Used by the dashboard sparkline.
+/// `date` is the start of the day (UTC), `cost` is the finalized total for
+/// that day across all models. Today is intentionally excluded — see
+/// `MTDCost.dailySpend` for why.
+struct DailySpend: Equatable, Hashable {
+    let date: Date
+    let cost: Money
+}
+
+/// One model's contribution to the month-to-date spend. Sorted descending
+/// by `cost` by `AnthropicClient`. UI picks top N for display.
+struct ModelSpend: Equatable, Hashable {
+    /// Raw Anthropic model id (e.g. `claude-opus-4-7`).
+    let modelId: String
+    /// Pretty name (e.g. `Claude Opus 4.7`). May fall back to `modelId`
+    /// when we can't parse the family/version.
+    let displayName: String
+    let cost: Money
+}
+
 /// Composite month-to-date number returned to the UI. `total` is what we
 /// display front-and-center; the other fields exist so the UI can disclose
 /// the gap honestly ("$607.12 · including ~$19.81 estimate for today").
@@ -243,6 +381,31 @@ struct MTDCost: Equatable {
     let finalizedThrough: Date
     /// When the report was generated.
     let asOf: Date
+    /// Last ~30 days of finalized daily spend (sorted chronologically).
+    /// Today is *not* included — it lives in `todayEstimatedCost` and
+    /// would otherwise swing the last point wildly during the day.
+    let dailySpend: [DailySpend]
+    /// Per-model contribution to the MTD finalized cost, sorted descending.
+    /// The dashboard renders the top 3.
+    let modelBreakdown: [ModelSpend]
+
+    init(
+        finalizedCost: Money,
+        todayEstimatedCost: Money,
+        unpricedModels: [String],
+        finalizedThrough: Date,
+        asOf: Date,
+        dailySpend: [DailySpend] = [],
+        modelBreakdown: [ModelSpend] = []
+    ) {
+        self.finalizedCost = finalizedCost
+        self.todayEstimatedCost = todayEstimatedCost
+        self.unpricedModels = unpricedModels
+        self.finalizedThrough = finalizedThrough
+        self.asOf = asOf
+        self.dailySpend = dailySpend
+        self.modelBreakdown = modelBreakdown
+    }
 
     var total: Money { finalizedCost + todayEstimatedCost }
     var hasTodayEstimate: Bool { todayEstimatedCost.cents > 0 }

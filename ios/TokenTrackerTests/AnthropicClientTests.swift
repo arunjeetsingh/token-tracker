@@ -176,6 +176,114 @@ final class AnthropicClientTests: XCTestCase {
         XCTAssertFalse(report.hasUnpricedModels)
     }
 
+    func testCostReportPopulatesDailyAndModelBreakdown() async throws {
+        // Two days, two models per day. cost_report grouped by model returns
+        // one row per (day, model). Sparkline gets daily sums, breakdown
+        // gets per-model sums across the window.
+        let body = """
+        {
+          "data": [
+            {"starting_at":"2026-05-20T00:00:00Z","ending_at":"2026-05-21T00:00:00Z",
+             "results":[
+               {"currency":"USD","amount":"30000.00","model":"claude-opus-4-7"},
+               {"currency":"USD","amount":"10000.00","model":"claude-sonnet-4-5"}
+             ]},
+            {"starting_at":"2026-05-21T00:00:00Z","ending_at":"2026-05-22T00:00:00Z",
+             "results":[
+               {"currency":"USD","amount":"50000.00","model":"claude-opus-4-7"},
+               {"currency":"USD","amount":"15000.00","model":"claude-haiku-4-5"}
+             ]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        var capturedURL: URL?
+        MockURLProtocol.responder = { request in
+            capturedURL = request.url
+            return (200, Data(body.utf8))
+        }
+        let client = makeClient()
+        let start = ISO8601DateFormatter().date(from: "2026-05-20T00:00:00Z")!
+        let end = ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+        let detail = try await client.costDetail(start: start, end: end)
+
+        // Two days, sorted chronologically.
+        XCTAssertEqual(detail.daily.count, 2)
+        XCTAssertEqual(detail.daily[0].cost.cents, 30000 + 10000) // $400
+        XCTAssertEqual(detail.daily[1].cost.cents, 50000 + 15000) // $650
+        // Per-model totals across the window.
+        XCTAssertEqual(detail.perModel["claude-opus-4-7"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 80000)
+        XCTAssertEqual(detail.perModel["claude-sonnet-4-5"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 10000)
+        XCTAssertEqual(detail.perModel["claude-haiku-4-5"]?.reduce(Money.zero) { $0 + $1.cost }.cents, 15000)
+
+        // Confirm we asked for daily buckets grouped by model.
+        let urlStr = capturedURL?.absoluteString ?? ""
+        XCTAssertTrue(urlStr.contains("bucket_width=1d"))
+        XCTAssertTrue(urlStr.contains("group_by%5B%5D=model") || urlStr.contains("group_by[]=model"))
+    }
+
+    func testMonthToDateExposesSparklineAndBreakdown() async throws {
+        // cost_report covers the 30-day sparkline window. Hero MTD is the
+        // in-month subset; breakdown is also in-month per model.
+        let costPage = """
+        {
+          "data": [
+            {"starting_at":"2026-05-20T00:00:00Z","ending_at":"2026-05-21T00:00:00Z",
+             "results":[
+               {"currency":"USD","amount":"30000.00","model":"claude-opus-4-7"},
+               {"currency":"USD","amount":"10000.00","model":"claude-sonnet-4-5"}
+             ]},
+            {"starting_at":"2026-05-21T00:00:00Z","ending_at":"2026-05-22T00:00:00Z",
+             "results":[
+               {"currency":"USD","amount":"50000.00","model":"claude-opus-4-7"},
+               {"currency":"USD","amount":"15000.00","model":"claude-haiku-4-5"}
+             ]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        let usagePage = """
+        {
+          "data": [
+            {"starting_at":"2026-05-24T14:00:00Z","ending_at":"2026-05-24T15:00:00Z",
+             "results":[]}
+          ],
+          "has_more": false,
+          "next_page": null
+        }
+        """
+        MockURLProtocol.responder = { request in
+            let path = request.url?.path ?? ""
+            if path.contains("cost_report") {
+                return (200, Data(costPage.utf8))
+            }
+            return (200, Data(usagePage.utf8))
+        }
+        let now = ISO8601DateFormatter().date(from: "2026-05-24T14:30:00Z")!
+        let report = try await makeClient().monthToDateCost(now: now)
+        XCTAssertEqual(report.dailySpend.count, 2)
+        XCTAssertEqual(report.modelBreakdown.count, 3)
+        // Breakdown is sorted descending by cost.
+        XCTAssertEqual(report.modelBreakdown[0].modelId, "claude-opus-4-7")
+        XCTAssertGreaterThan(report.modelBreakdown[0].cost.cents, report.modelBreakdown[1].cost.cents)
+        XCTAssertEqual(report.modelBreakdown[0].displayName, "Claude Opus 4.7")
+        // MTD finalized = sum of daily sums.
+        XCTAssertEqual(report.finalizedCost.cents, 30000 + 10000 + 50000 + 15000)
+    }
+
+    func testDisplayNameForKnownModelIds() {
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "claude-opus-4-7"),   "Claude Opus 4.7")
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "claude-opus-4-5"),   "Claude Opus 4.5")
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "claude-sonnet-4-5"), "Claude Sonnet 4.5")
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "claude-haiku-4-5"),  "Claude Haiku 4.5")
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "claude-3-5-sonnet"), "Claude Sonnet 3.5")
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "claude-3-5-haiku"),  "Claude Haiku 3.5")
+        // Unknown id falls through unchanged.
+        XCTAssertEqual(AnthropicClient.displayName(forModelId: "some-future-model"), "some-future-model")
+    }
+
     func testHTTPErrorSurfacesBody() async {
         MockURLProtocol.responder = { _ in
             (401, Data(#"{"error":"unauthorized"}"#.utf8))
