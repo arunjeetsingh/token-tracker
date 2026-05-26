@@ -16,12 +16,17 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func bootstrap() async {
-        // App Store screenshot mode: skip Keychain + API entirely.
+        // Demo Mode: skip Keychain + API entirely. Triggered by either
+        //   (a) launch arg `-DemoMode YES` / `-DemoModeScreen ...` (screenshot capture), or
+        //   (b) a reviewer pasting `DemoMode.appReviewKey` in onboarding (persisted).
         if DemoMode.isEnabled {
             switch DemoMode.screen ?? .dashboard {
             case .dashboard:
                 let demo = DemoMode.snapshot()
-                maskedKey = "sk-ant-admin01-…demo"
+                // Render the masked form of the actual magic key so Settings
+                // looks consistent (`sk-…w22`). Falls back to the same
+                // masking path real keys use.
+                maskedKey = AnthropicKeyValidation.masked(DemoMode.appReviewKey)
                 state = .loaded(report: demo.report, orgName: demo.orgName)
             case .onboarding:
                 // Force the onboarding flow without touching Keychain.
@@ -49,6 +54,15 @@ final class DashboardViewModel: ObservableObject {
         let trimmed = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return .failure(ConnectError(message: "Paste your admin key to continue."))
+        }
+        // App Reviewer demo magic key: short-circuit before any network call
+        // or Keychain write. Persist the flag so demo mode survives relaunch.
+        if DemoMode.isReviewKey(trimmed) {
+            DemoMode.isPersistedActive = true
+            let demo = DemoMode.snapshot()
+            maskedKey = AnthropicKeyValidation.masked(trimmed)
+            state = .loaded(report: demo.report, orgName: demo.orgName)
+            return .success(())
         }
         state = .loading
         let client = AnthropicClient(apiKey: trimmed)
@@ -88,6 +102,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func disconnect() async {
+        // Demo mode never wrote to Keychain; clearing the persisted flag is
+        // the only state change needed. We still call delete below in case
+        // the user toggled between real and demo over the lifetime of the
+        // install — it's a no-op when nothing's stored.
+        DemoMode.isPersistedActive = false
         do {
             try KeychainStore.delete(.anthropicAdminKey)
         } catch {
