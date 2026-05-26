@@ -56,6 +56,27 @@ final class DemoModeTests: XCTestCase {
         XCTAssertFalse(DemoMode.isReviewKey("\n\t  \n"))
     }
 
+    /// Regression guard for the OnboardingView "Save & Connect" gate.
+    ///
+    /// The demo key is intentionally shorter than `AnthropicKeyValidation.minLength`
+    /// (which enforces a realistic admin key length). This is exactly *why*
+    /// `OnboardingView.canSubmit` has to short-circuit on `DemoMode.isReviewKey`
+    /// before the length check — otherwise reviewers paste the magic key, the
+    /// button stays disabled, and Demo Mode is unreachable.
+    ///
+    /// If you ever lengthen `appReviewKey` past `minLength` and remove the
+    /// short-circuit, this test will fail and remind you to keep the invariant
+    /// documented in OnboardingView.canSubmit aligned with reality.
+    func testAppReviewKey_isShorterThanMinLength_documentsCanSubmitShortCircuit() {
+        XCTAssertLessThan(
+            DemoMode.appReviewKey.count,
+            AnthropicKeyValidation.minLength,
+            "Demo review key must be shorter than the real-key minLength — this is the reason OnboardingView.canSubmit special-cases DemoMode.isReviewKey."
+        )
+        // Sanity: the magic key still matches itself.
+        XCTAssertTrue(DemoMode.isReviewKey(DemoMode.appReviewKey))
+    }
+
     // MARK: - Persistence
 
     func testPersistedActive_roundTrip() {
