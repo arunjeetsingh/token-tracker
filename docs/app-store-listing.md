@@ -104,17 +104,34 @@ The Anthropic Admin API key is **stored only on the user's device** (iOS Keychai
 
 ## Screenshot plan
 
-- 6.7" (iPhone 17 Pro Max simulator) — 1290 × 2796 — required
+- 6.9" (iPhone 17 Pro Max simulator) — 1320 × 2868 — required
 - 6.5" (iPhone 11 Pro Max-class) — 1242 × 2688 — required for back-compat
 - Capture: Today's cost view, MTD view, model breakdown, onboarding step 2 (Admin Keys page), Settings
 
-Caption ideas (top of each screenshot, App Store overlay style):
+### Where the files live
 
-1. "How much am I spending this month?"
-2. "Track today's cost in real time"
-3. "Break it down by model"
-4. "Your key never leaves your phone"
-5. "30-second setup. No account."
+Run `scripts/capture-app-store-screenshots.sh` to (re)generate. That script:
+
+1. Captures raw simulator screenshots to `docs/app-store-screenshots/{6.5inch,6.9inch}/01-dashboard.png` and `02-onboarding.png`.
+2. Runs `scripts/add-caption-overlays.py` to render marketing headlines + subheads directly into the screenshots' empty top space.
+3. Writes the captioned versions to `docs/app-store-screenshots/{6.5inch,6.9inch}/captioned/`.
+
+**Upload the files in `captioned/` to App Store Connect**, not the raw parent-level PNGs. See ADR-010 for the overlay-vs-mockup decision.
+
+### Active caption copy
+
+| Screenshot | Headline | Subhead |
+| --- | --- | --- |
+| 01-dashboard | How much am I spending? | Live Anthropic API costs, on your phone |
+| 02-onboarding | 30-second setup | No account. No server. No tracking. |
+
+Edit the `CAPTIONS` dict at the top of `scripts/add-caption-overlays.py` and re-run to iterate.
+
+### Other caption ideas (unused, for future screens)
+
+1. "Track today's cost in real time"
+2. "Break it down by model"
+3. "Your key never leaves your phone"
 
 ## Review notes (App Review demo account / instructions field)
 
