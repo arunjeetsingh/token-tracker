@@ -83,30 +83,45 @@ struct DashboardView: View {
     }
 
     private func loadedView(report: MTDCost, orgName: String) -> some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Text(orgName)
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.secondary)
-            Text(report.total.formatted())
-                .font(.system(size: 64, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-            Text("Month to date · as of \(report.asOf, style: .time)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            if report.hasTodayEstimate {
-                Text("Includes ~\(report.todayEstimatedCost.formatted()) estimated for today")
-                    .font(.caption2)
+        // Layout intent: hero (org pill + big number + intraday note) sits
+        // slightly above visual center; sparkline + top-models stack fills
+        // the space below. This is deliberate — PR #23's screenshot showed
+        // "mostly empty space"; ADR-011 explains why we fill it.
+        VStack(spacing: 16) {
+            Spacer(minLength: 16)
+            VStack(spacing: 12) {
+                Text(orgName)
+                    .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
+                Text(report.total.formatted())
+                    .font(.system(size: 64, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text("Month to date · as of \(report.asOf, style: .time)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if report.hasTodayEstimate {
+                    Text("Includes ~\(report.todayEstimatedCost.formatted()) estimated for today")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if report.hasUnpricedModels {
+                    Text("⚠️ Estimate excludes: \(report.unpricedModels.joined(separator: ", "))")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
             }
-            if report.hasUnpricedModels {
-                Text("⚠️ Estimate excludes: \(report.unpricedModels.joined(separator: ", "))")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+            VStack(spacing: 24) {
+                if !report.dailySpend.isEmpty {
+                    Sparkline(data: report.dailySpend)
+                }
+                if !report.modelBreakdown.isEmpty {
+                    ModelBreakdown(models: report.modelBreakdown)
+                }
             }
-            Spacer()
+            .padding(.horizontal)
+            Spacer(minLength: 24)
         }
     }
 

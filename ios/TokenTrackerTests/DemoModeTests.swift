@@ -68,6 +68,44 @@ final class DemoModeTests: XCTestCase {
         XCTAssertFalse(DemoMode.isPersistedActive)
     }
 
+    // MARK: - snapshot
+
+    func testSnapshot_includesDailySpendAndModelBreakdown() {
+        let (org, report) = DemoMode.snapshot()
+        XCTAssertEqual(org, "Personal")
+        XCTAssertEqual(report.dailySpend.count, 30, "Should ship 30 days of canned spend")
+        XCTAssertEqual(report.modelBreakdown.count, 3, "Should ship top 3 models")
+        XCTAssertGreaterThan(report.todayEstimatedCost.cents, 0)
+    }
+
+    func testSnapshot_dailySpendSumsToFinalizedCost() {
+        let (_, report) = DemoMode.snapshot()
+        let sum = report.dailySpend.reduce(Int64(0)) { $0 + $1.cost.cents }
+        XCTAssertEqual(sum, report.finalizedCost.cents,
+                       "Hero finalized total should equal the sum of the sparkline data")
+    }
+
+    func testSnapshot_modelBreakdownSumsToFinalized() {
+        let (_, report) = DemoMode.snapshot()
+        let sum = report.modelBreakdown.reduce(Int64(0)) { $0 + $1.cost.cents }
+        XCTAssertEqual(sum, report.finalizedCost.cents,
+                       "Top-3 model breakdown should partition the finalized total exactly")
+    }
+
+    func testSnapshot_modelBreakdownSortedDescending() {
+        let (_, report) = DemoMode.snapshot()
+        for (a, b) in zip(report.modelBreakdown, report.modelBreakdown.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(a.cost.cents, b.cost.cents)
+        }
+    }
+
+    func testSnapshot_dailySpendSortedChronologically() {
+        let (_, report) = DemoMode.snapshot()
+        for (a, b) in zip(report.dailySpend, report.dailySpend.dropFirst()) {
+            XCTAssertLessThan(a.date, b.date)
+        }
+    }
+
     func testIsEnabled_honorsPersistedFlag() {
         // Pre-condition: launch args aren't set in a unit test, so the only
         // way isEnabled flips true here is via the persisted flag.
