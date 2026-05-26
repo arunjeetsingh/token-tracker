@@ -68,6 +68,14 @@ final class DashboardViewModel: ObservableObject {
         let client = AnthropicClient(apiKey: trimmed)
         do {
             let identity = try await client.whoami()
+            // Real key authenticated successfully — user has explicitly chosen
+            // to leave demo mode. Clear the persisted flag so the DEMO pill
+            // disappears. (We do this only AFTER whoami succeeds; if the
+            // network call fails, we preserve the previous demo state so a
+            // transient failure doesn't strand a reviewer with no working UI.
+            // 401/403 failures are handled in the catch branch below and
+            // intentionally leave the flag alone.)
+            DemoMode.isPersistedActive = false
             try KeychainStore.save(trimmed, for: .anthropicAdminKey)
             maskedKey = AnthropicKeyValidation.masked(trimmed)
             // Now fetch cost. If this fails the key is still saved (it auth'd) —
@@ -89,6 +97,15 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func refresh() async {
+        // Demo mode never wrote to Keychain — if we try to read the key
+        // here we'd get nil and bounce the user back to onboarding. Mirror
+        // the bootstrap() short-circuit and just re-render the canned data.
+        if DemoMode.isEnabled {
+            let demo = DemoMode.snapshot()
+            maskedKey = AnthropicKeyValidation.masked(DemoMode.appReviewKey)
+            state = .loaded(report: demo.report, orgName: demo.orgName)
+            return
+        }
         do {
             guard let key = try KeychainStore.load(.anthropicAdminKey) else {
                 state = .needsCredentials

@@ -127,6 +127,54 @@ final class DemoModeTests: XCTestCase {
         }
     }
 
+    // MARK: - DashboardViewModel x DemoMode integration
+
+    /// Regression for bug: tapping the refresh icon in demo mode used to
+    /// dump the user back to onboarding because `KeychainStore.load` returns
+    /// nil (demo mode never writes a key). Refresh must mirror bootstrap's
+    /// demo-mode short-circuit.
+    @MainActor
+    func testRefreshInDemoMode_keepsDashboardLoaded() async {
+        DemoMode.isPersistedActive = true
+        let vm = DashboardViewModel()
+
+        await vm.bootstrap()
+        guard case .loaded(let bootReport, let bootOrg) = vm.state else {
+            return XCTFail("bootstrap() in demo mode should leave state .loaded, got \(vm.state)")
+        }
+        XCTAssertEqual(bootOrg, "Personal")
+        XCTAssertGreaterThan(bootReport.finalizedCost.cents, 0)
+
+        await vm.refresh()
+        guard case .loaded(let refReport, let refOrg) = vm.state else {
+            return XCTFail("refresh() in demo mode must keep state .loaded (bug: was returning .needsCredentials), got \(vm.state)")
+        }
+        XCTAssertEqual(refOrg, "Personal")
+        XCTAssertEqual(refReport.finalizedCost.cents, bootReport.finalizedCost.cents,
+                       "Refresh in demo mode should re-render the same canned snapshot")
+        XCTAssertNotNil(vm.maskedKey, "Demo-mode refresh must keep the masked key so Settings stays consistent")
+    }
+
+    /// Manual verification scenario for bug 2 (DEMO pill leaks after
+    /// switching from demo to a real admin key):
+    ///
+    /// The flag-clear lives in `DashboardViewModel.connect(using:)`
+    /// immediately after `client.whoami()` succeeds. We can't easily unit-test
+    /// this path without mocking `AnthropicClient` (which currently has no
+    /// protocol seam). To verify manually:
+    ///   1. Launch app, paste `DemoMode.appReviewKey` in onboarding → demo
+    ///      mode persists, DEMO pill visible.
+    ///   2. Tap Disconnect.
+    ///   3. Paste a real admin key, tap Save & Connect.
+    ///   4. On success, the DEMO pill must NOT appear on the dashboard.
+    ///   5. If the new key auth-fails (401/403), the persisted flag is
+    ///      intentionally left alone so transient state isn't lost.
+    func testConnectRealKey_clearsPersistedDemoFlag_manualScenarioDocumented() {
+        // Sanity: flag round-trip already covered by testPersistedActive_roundTrip.
+        // This test exists purely as a discoverable anchor for the manual scenario above.
+        XCTAssertFalse(DemoMode.isPersistedActive)
+    }
+
     func testIsEnabled_honorsPersistedFlag() {
         // Pre-condition: launch args aren't set in a unit test, so the only
         // way isEnabled flips true here is via the persisted flag.
