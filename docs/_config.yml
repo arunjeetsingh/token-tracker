@@ -1,0 +1,15 @@
+title: Token Counter
+description: A privacy-friendly iOS app to monitor your Anthropic API spend.
+theme: jekyll-theme-minimal
+url: https://arunjeetsingh.github.io
+baseurl: /token-tracker
+
+# Internal engineering docs that live alongside the public site source.
+# Don't render these as public pages.
+exclude:
+  - README.md
+  - api-research.md
+  - app-store-listing.md
+  - architecture.md
+  - decisions.md
+  - testflight-setup.md
