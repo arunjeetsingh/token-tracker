@@ -16,6 +16,20 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func bootstrap() async {
+        // App Store screenshot mode: skip Keychain + API entirely.
+        if DemoMode.isEnabled {
+            switch DemoMode.screen ?? .dashboard {
+            case .dashboard:
+                let demo = DemoMode.snapshot()
+                maskedKey = "sk-ant-admin01-…demo"
+                state = .loaded(report: demo.report, orgName: demo.orgName)
+            case .onboarding:
+                // Force the onboarding flow without touching Keychain.
+                maskedKey = nil
+                state = .needsCredentials
+            }
+            return
+        }
         do {
             guard let key = try KeychainStore.load(.anthropicAdminKey), !key.isEmpty else {
                 state = .needsCredentials
