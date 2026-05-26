@@ -4,6 +4,23 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-26 — ADR-010: Caption overlay strategy for App Store screenshots
+
+**Context:** Apple App Store screenshots benefit from editorial captions — a short headline that tells the prospect what the screen does before they read the UI. We have two reviewer-grade screenshots (dashboard, onboarding) captured at the two required sizes (6.9" 1320×2868 and 6.5" 1242×2688). The dashboard has a generous top white zone; the onboarding has very little.
+
+**Options considered:**
+  - **A:** Full marketing mockup — phone frame around the screenshot, colored gradient background, custom display font, wordmark, app icon. The Headspace / Things 3 / Duolingo treatment.
+  - **B:** Overlay-on-screenshot — leave the screenshot exactly as-is, render a headline + subhead directly into the existing empty top space in plain SF Pro. No phone frame, no background, no chrome.
+  - **C:** Ship the raw screenshots with no captions at all.
+
+**Decision:** Option B. Implemented in `scripts/add-caption-overlays.py` as a deterministic Python + Pillow pass over the freshly-captured PNGs. The script auto-detects the topmost clean-white horizontal band of sufficient height below the iOS status bar and places the caption block there with breathing room, so it never collides with app chrome (gear icons, nav title, large title). Output lands in `docs/app-store-screenshots/{6.5inch,6.9inch}/captioned/`.
+
+**Why B over A:** Faster to iterate (no design tool round-trip), lower design risk (a bad mockup looks worse than a clean screenshot), and a plain editorial caption matches the app's minimalist aesthetic. We can upgrade to A later without throwing away the screenshot pipeline. Why B over C: Apple's own merchandising shelves prefer screenshots that read at a glance — a one-line headline meaningfully improves install-decision quality.
+
+**Tradeoff accepted:** Captions are static PNG burns, not live App Store Connect localizations. If we add Spanish/French we'll need to re-run the script with localized copy and upload a second set, or move to A.
+
+---
+
 ## 2026-05-26 — ADR-009: Demo Mode for App Reviewers via magic key string
 
 **Context:** App Store review requires reviewers to exercise the full app. Token Counter's full UI depends on a live Anthropic Admin API key against a real organizational account — something Apple Reviewers won't (and shouldn't have to) provision. v0.2 shipped without a story here; the listing's "Review notes" section had a TBD.

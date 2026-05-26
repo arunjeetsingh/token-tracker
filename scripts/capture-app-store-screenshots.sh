@@ -84,5 +84,12 @@ sys.exit('no simulator named \"%s\" found' % target)
 build_and_install "iPhone 17 Pro Max" "$OUT_BASE/6.9inch"
 build_and_install "iPhone 11 Pro Max (Screenshots)" "$OUT_BASE/6.5inch"
 
-echo "all screenshots in $OUT_BASE"
-ls -la "$OUT_BASE"/*/
+# Render marketing caption overlays into the captioned/ subfolders.
+# These are the files we actually upload to App Store Connect.
+echo "==> adding caption overlays"
+python3 "$REPO_ROOT/scripts/add-caption-overlays.py"
+
+echo
+echo "raw screenshots:        $OUT_BASE/{6.5inch,6.9inch}/*.png"
+echo "captioned (for upload): $OUT_BASE/{6.5inch,6.9inch}/captioned/*.png"
+ls -la "$OUT_BASE"/*/ "$OUT_BASE"/*/captioned/ 2>/dev/null
