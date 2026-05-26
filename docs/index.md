@@ -1,9 +1,9 @@
 ---
 layout: default
-title: Token Counter
+title: TokenCounter
 ---
 
-# Token Counter
+# TokenCounter
 
 A privacy-friendly iOS app to monitor your Anthropic API spend.
 

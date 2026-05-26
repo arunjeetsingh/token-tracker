@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "1.0.6"
+    MARKETING_VERSION: "1.0.7"
     # Runtime overrides via fastlane `bump_build` lane (Unix timestamp); this
     # static value is the floor used for local dev / non-CI builds.
     CURRENT_PROJECT_VERSION: "1779733700"
@@ -33,7 +33,7 @@ targets:
     info:
       path: TokenTracker/Info.plist
       properties:
-        CFBundleDisplayName: Token Counter
+        CFBundleDisplayName: TokenCounter
         # Force xcodegen to write the version keys as build-setting
         # substitutions instead of hardcoded 1.0 / 1 defaults. Without
         # these, xcodegen's default Info.plist template ignores

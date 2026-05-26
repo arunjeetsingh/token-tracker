@@ -4,6 +4,24 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-26 — ADR-012: User-facing name = "TokenCounter" (no space)
+
+**Context:** Shipped the v1.0.x builds with `CFBundleDisplayName: Token Counter` (two words). The iOS Home Screen has a fixed icon-label width and strips the space, rendering the label as "TokenCounter" anyway. So the App Store listing, the docs, and the marketing site said "Token Counter," but every actual iPhone Home Screen running the app said "TokenCounter." Internally inconsistent across the surfaces a user sees.
+
+**Options considered:**
+  - **A:** Pick a shorter user-facing name that fits with the space intact (e.g. "Tally", "Burn"). Avoids the rendering issue entirely but throws away the "Token" + "Counter" search terms we already optimized the App Store keywords around, and forces a fresh naming exercise.
+  - **B:** Keep "Token Counter" everywhere and accept that the Home Screen disagrees with the Store listing. Cheapest, but it's a visible inconsistency every time a user installs and the icon label doesn't match what they tapped Install on.
+  - **C:** Lean in. Make "TokenCounter" (no space) the canonical name across the app's display name, the App Store listing, and all docs. The Home Screen already renders it that way; align everything else with that reality.
+
+**Decision:** Option C. `CFBundleDisplayName` becomes `TokenCounter`. App Store Connect listing copy, privacy policy, GitHub Pages site, marketing screenshot captions, and in-app UI strings (header, onboarding) all use "TokenCounter" as one word. Bundle ID (`ai.openclaw.tokentracker.TokenTracker`), Xcode target name (`TokenTracker`), repo name (`token-tracker`), Swift type/file/directory names, and the GitHub Pages URL slug all stay unchanged — those are internal/frozen identifiers, not user-facing.
+
+**Tradeoffs accepted:**
+  - Past ADRs (and any old release notes that already shipped) still say "Token Counter." We don't retroactively rewrite history; we just stop creating new instances of the two-word form.
+  - App Store Connect screenshots from earlier builds show the two-word name in chrome we burned into the captioned PNGs. Regenerated in the same PR as the rename.
+  - The subtitle "Anthropic spend at a glance" stays as-is — it's a tagline, not the name.
+
+---
+
 ## 2026-05-26 — ADR-011: Dashboard hero composition (sparkline + top models)
 
 **Context:** The v0.2 dashboard rendered as one giant MTD dollar figure floating in white space. PR #23's commit message explicitly flagged this as "mostly empty space" for the App Store hero shot. The screen needs more visual interest — both for marketing and as a real product, because power users want some sense of trend and where the money is going, not just "$X this month."
@@ -49,7 +67,7 @@ Append-only. Newest at top.
 
 ## 2026-05-26 — ADR-009: Demo Mode for App Reviewers via magic key string
 
-**Context:** App Store review requires reviewers to exercise the full app. Token Counter's full UI depends on a live Anthropic Admin API key against a real organizational account — something Apple Reviewers won't (and shouldn't have to) provision. v0.2 shipped without a story here; the listing's "Review notes" section had a TBD.
+**Context:** App Store review requires reviewers to exercise the full app. TokenCounter's full UI depends on a live Anthropic Admin API key against a real organizational account — something Apple Reviewers won't (and shouldn't have to) provision. v0.2 shipped without a story here; the listing's "Review notes" section had a TBD.
 
 **Options considered:**
   - **A:** Stand up a low-scope demo Anthropic organization, mint a real Admin key with read-only Cost/Usage scopes, paste it into App Store Connect's "Demo Account" field. Real network paths, but: (i) Anthropic doesn't actually offer scoped-down admin keys (admin = full org read/write), (ii) every reviewer using the same key risks accidental key exposure, (iii) requires us to maintain billing on a demo org indefinitely.
