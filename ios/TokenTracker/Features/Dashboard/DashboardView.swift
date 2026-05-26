@@ -22,7 +22,7 @@ struct DashboardView: View {
     }
 
     private var navigationTitle: String {
-        viewModel.state == .needsCredentials ? "" : "Token Counter"
+        viewModel.state == .needsCredentials ? "" : "TokenCounter"
     }
 
     @ToolbarContentBuilder

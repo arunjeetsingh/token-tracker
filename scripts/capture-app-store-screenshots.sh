@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # capture-app-store-screenshots.sh
 #
-# Captures Token Counter screenshots in App Store-required sizes:
+# Captures TokenCounter screenshots in App Store-required sizes:
 #   - 6.9" (iPhone 17 Pro Max) — 1320x2868 — required
 #   - 6.5" (iPhone 11 Pro Max) — 1242x2688 — required for back-compat
 #

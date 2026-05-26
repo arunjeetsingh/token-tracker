@@ -1,4 +1,4 @@
-# App Store Connect listing — Token Counter
+# App Store Connect listing — TokenCounter
 
 Source of truth for everything we copy/paste into App Store Connect.
 
@@ -6,7 +6,7 @@ Source of truth for everything we copy/paste into App Store Connect.
 
 | Field | Value |
 | --- | --- |
-| App name | **Token Counter** |
+| App name | **TokenCounter** |
 | Subtitle | _Anthropic spend at a glance_ |
 | Bundle ID | `ai.openclaw.tokentracker.TokenTracker` |
 | SKU | `tokencounter-ios-1` |
@@ -23,7 +23,7 @@ Source of truth for everything we copy/paste into App Store Connect.
 
 ## Description (max 4000 chars)
 
-> Token Counter is the simplest way to keep tabs on what your Anthropic API account is costing this month — without giving up your privacy.
+> TokenCounter is the simplest way to keep tabs on what your Anthropic API account is costing this month — without giving up your privacy.
 >
 > Paste your Admin API key once, and the app fetches live cost data straight from Anthropic to your iPhone. You'll see:
 >
@@ -32,7 +32,7 @@ Source of truth for everything we copy/paste into App Store Connect.
 > • Breakdown by model
 > • Quick visual sense of whether you're under, on track, or over your usual monthly burn
 >
-> Token Counter does not have a server. The app talks directly from your iPhone to api.anthropic.com using your key. Nothing about your account, key, usage, or cost ever passes through any third party — including us.
+> TokenCounter does not have a server. The app talks directly from your iPhone to api.anthropic.com using your key. Nothing about your account, key, usage, or cost ever passes through any third party — including us.
 >
 > WHY YOU'LL LIKE IT
 >
@@ -44,7 +44,7 @@ Source of truth for everything we copy/paste into App Store Connect.
 >
 > WHAT YOU NEED
 >
-> Token Counter reads from Anthropic's Admin API, which requires:
+> TokenCounter reads from Anthropic's Admin API, which requires:
 >
 > 1. An organizational Anthropic account (admin keys aren't available on individual accounts).
 > 2. An Admin API key (the ones that start with `***-…`, not `***-…`).
@@ -81,7 +81,7 @@ anthropic,claude,api,token,cost,spend,monitor,llm,ai,billing,usage,tracker
 
 ## What's New (release notes for v1.0.x — first public release)
 
-> First public release of Token Counter.
+> First public release of TokenCounter.
 >
 > • Live month-to-date Anthropic spend
 > • Today's intra-day cost estimate
@@ -137,9 +137,9 @@ Edit the `CAPTIONS` dict at the top of `scripts/add-caption-overlays.py` and re-
 
 > **Demo Mode for App Review**
 >
-> Token Counter is a thin client for the Anthropic API. The full experience requires an Anthropic organization Admin API key, which Apple Reviewers won't have. To exercise the full UI without a real Anthropic account, we've provided a **Demo Mode** activated by a magic key:
+> TokenCounter is a thin client for the Anthropic API. The full experience requires an Anthropic organization Admin API key, which Apple Reviewers won't have. To exercise the full UI without a real Anthropic account, we've provided a **Demo Mode** activated by a magic key:
 >
-> 1. Launch Token Counter.
+> 1. Launch TokenCounter.
 > 2. Tap through onboarding to the "Paste your Admin key" step.
 > 3. Paste: `sk-ant-demo-2026-05-w22`
 > 4. Tap Connect.

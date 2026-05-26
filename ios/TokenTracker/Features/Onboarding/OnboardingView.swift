@@ -60,7 +60,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.tint)
             Text("One-time setup")
                 .font(.largeTitle.bold())
-            Text("Token Counter reads usage from Anthropic's Admin API. We need a one-time admin key — takes about 30 seconds. It stays on this device only.")
+            Text("TokenCounter reads usage from Anthropic's Admin API. We need a one-time admin key — takes about 30 seconds. It stays on this device only.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -99,7 +99,7 @@ struct OnboardingView: View {
             stepCard(
                 number: 3,
                 title: "Create an Admin key",
-                detail: "Tap **+ Create admin key**. Name it “Token Counter”. (Admin keys are different from regular API keys — they start with `sk-ant-admin01-…` instead of `sk-ant-api03-…`.)"
+                detail: "Tap **+ Create admin key**. Name it “TokenCounter”. (Admin keys are different from regular API keys — they start with `sk-ant-admin01-…` instead of `sk-ant-api03-…`.)"
             )
             stepCard(
                 number: 4,
