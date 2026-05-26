@@ -202,7 +202,14 @@ struct OnboardingView: View {
     }
 
     private var canSubmit: Bool {
-        !isSubmitting && trimmedKey.count >= AnthropicKeyValidation.minLength
+        // App Reviewer Demo Mode short-circuit: the magic review key is
+        // intentionally shorter than `AnthropicKeyValidation.minLength`, so
+        // without this branch the "Save & Connect" button would stay disabled
+        // and reviewers could never activate Demo Mode.
+        !isSubmitting && (
+            DemoMode.isReviewKey(trimmedKey) ||
+            trimmedKey.count >= AnthropicKeyValidation.minLength
+        )
     }
 
     private func detectClipboard() {
