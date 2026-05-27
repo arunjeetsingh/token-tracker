@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    No app data is eligible for cloud backup yet. Once we add the
+    EncryptedSharedPreferences-backed API-key store we'll explicitly
+    exclude that file here as well, but for now there's nothing to
+    say beyond "don't back up anything by default."
+-->
+<full-backup-content>
+</full-backup-content>

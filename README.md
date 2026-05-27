@@ -24,6 +24,7 @@ token-tracker/
 ├── scripts/
 │   └── cost_api_probe.py    # CLI to test/explore Anthropic cost API
 ├── ios/                     # Xcode project (iOS app source)
+├── android/                 # Gradle / Jetpack Compose Android app source
 ├── backend/                 # (placeholder) any server-side helpers
 └── .github/workflows/       # CI/CD pipelines
 ```
@@ -47,6 +48,44 @@ token-tracker/
 python3 scripts/cost_api_probe.py --mtd
 ```
 Reads admin key from `~/.openclaw/workspace/secrets/anthropic-admin-key.txt`.
+
+### Android app
+
+Native Kotlin + Jetpack Compose. Lives under `android/` and uses Gradle with the Kotlin DSL (KTS). See [ADR-013](docs/decisions.md) for the why.
+
+Prereqs:
+
+- **JDK 21** (Temurin or Homebrew's `openjdk@21`).
+- **Android SDK** with platform `android-36` and build-tools `36.0.0`. Easiest path: install [Android Studio](https://developer.android.com/studio) and let it provision the SDK, or `brew install --cask android-commandlinetools` and run `sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"`.
+- Export `ANDROID_HOME` to your SDK root (e.g. `/opt/homebrew/share/android-commandlinetools` for the Homebrew cask).
+
+Build a debug APK:
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+Run unit tests:
+
+```bash
+cd android
+./gradlew test
+```
+
+Run on an emulator (after creating an AVD in Android Studio or via `avdmanager`):
+
+```bash
+# Start an emulator (replace Pixel_7_API_36 with your AVD name)
+$ANDROID_HOME/emulator/emulator -avd Pixel_7_API_36 &
+
+# Wait for it to come online, then install the debug APK
+cd android
+./gradlew installDebug
+adb shell am start -n studio.maximumimpact.tokencounter/.MainActivity
+```
+
+The v1 build is a hello-only dashboard with hardcoded numbers; there's no data layer yet.
 
 ### iOS app
 
