@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ backup/transfer rules. Same posture as backup_rules.xml:
+    no app data is included in cloud backup or device-to-device transfer
+    for v1. We'll narrow this when we have a data layer worth migrating.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+    </cloud-backup>
+    <device-transfer>
+    </device-transfer>
+</data-extraction-rules>

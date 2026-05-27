@@ -4,6 +4,24 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-05-26 — ADR-013: Android client = native Kotlin + Compose, monorepo, applicationId `studio.maximumimpact.tokencounter`
+
+**Context:** Per ADR-001 (iOS first, then Android), now starting Android development. New domain `maximumimpact.studio` will be the canonical reverse-domain prefix for all future Maximum Impact apps.
+
+**Decision:**
+  - Native Kotlin + Jetpack Compose (no Flutter, no React Native, no KMP-shared-UI).
+  - Monorepo with iOS — Android lives under `android/` in this repo. Per-platform CI workflows gated by `paths:` filter so cross-platform PRs don't trigger noisy builds.
+  - applicationId: `studio.maximumimpact.tokencounter`. Frozen forever (Play Store treats it as the primary key).
+  - Visual language: matches iOS for v1 (white background, #007AFF blue accent, bold display number). Will revisit Material You / dynamic color after launch.
+
+**Alternatives considered:**
+  - **Separate `tokencounter-android` repo** — rejected: duplicates docs/ADRs/icon, drift risk between platforms.
+  - **Flutter or React Native** — rejected per ADR-001.
+  - **KMP shared business logic** — deferred. Worth considering after both apps stabilize, but adds toolchain complexity for an MVP.
+  - **applicationId `ai.openclaw.tokencounter`** — rejected: openclaw is the agent platform, not the studio. maximumimpact.studio is the long-term brand.
+
+---
+
 ## 2026-05-26 — ADR-012: User-facing name = "TokenCounter" (no space)
 
 **Context:** Shipped the v1.0.x builds with `CFBundleDisplayName: Token Counter` (two words). The iOS Home Screen has a fixed icon-label width and strips the space, rendering the label as "TokenCounter" anyway. So the App Store listing, the docs, and the marketing site said "Token Counter," but every actual iPhone Home Screen running the app said "TokenCounter." Internally inconsistent across the surfaces a user sees.
