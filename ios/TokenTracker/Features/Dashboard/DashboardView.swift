@@ -141,15 +141,16 @@ struct DashboardView: View {
     }
 
     private func loadedView(report: MTDCost, orgName: String) -> some View {
-        // Layout intent: hero (big number + intraday note) sits slightly
-        // above visual center; chart + top-models stack fills the space
-        // below. Org name no longer rendered as a top pill — moved to the
-        // Settings sheet so the dashboard hero is the spend itself.
-        // `orgName` is kept on the API surface so VoiceOver / future hooks
-        // can read it without re-fetching.
+        // Layout intent: hero (org name + big number + intraday note) sits
+        // slightly above visual center; chart + top-models stack fills the
+        // space below. The studio attribution footer lives in safeAreaInset
+        // and is separate from this hero.
         VStack(spacing: 16) {
             Spacer(minLength: 16)
             VStack(spacing: 12) {
+                Text(orgName)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
                 Text(report.total.formatted())
                     .font(.system(size: 64, weight: .semibold, design: .rounded))
                     .monospacedDigit()
