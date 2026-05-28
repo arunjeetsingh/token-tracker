@@ -22,6 +22,25 @@ final class DashboardViewModel: ObservableObject {
         var errorDescription: String? { message }
     }
 
+    // MARK: - Dependencies
+
+    private let cost: CostProviding
+    private let keychain: CredentialStoring
+    private let cache: ReportCaching
+
+    /// Production callers use the zero-arg form, which wires up the live
+    /// Anthropic API, Keychain, and `UserDefaults` cache. Tests inject mocks
+    /// for each collaborator to exercise the state machine in isolation.
+    init(
+        cost: CostProviding = LiveCostProvider(),
+        keychain: CredentialStoring = LiveCredentialStore(),
+        cache: ReportCaching = LiveReportCache()
+    ) {
+        self.cost = cost
+        self.keychain = keychain
+        self.cache = cache
+    }
+
     func bootstrap() async {
         // Demo Mode: skip Keychain + API entirely. Triggered by either
         //   (a) launch arg `-DemoMode YES` / `-DemoModeScreen ...` (screenshot capture), or
@@ -43,7 +62,7 @@ final class DashboardViewModel: ObservableObject {
             return
         }
         do {
-            guard let key = try KeychainStore.load(.anthropicAdminKey), !key.isEmpty else {
+            guard let key = try keychain.load(), !key.isEmpty else {
                 state = .needsCredentials
                 return
             }
@@ -54,7 +73,7 @@ final class DashboardViewModel: ObservableObject {
             // will already have cleared the cache). On cache miss we still
             // fall through to .loading so the user sees the spinner — that
             // path is unchanged from before.
-            if let cached = DashboardCache.load() {
+            if let cached = cache.load() {
                 state = .loaded(report: cached.report, orgName: cached.orgName)
             }
             await refresh(using: key)
@@ -81,9 +100,8 @@ final class DashboardViewModel: ObservableObject {
             return .success(())
         }
         state = .loading
-        let client = AnthropicClient(apiKey: trimmed)
         do {
-            let identity = try await client.whoami()
+            let identity = try await cost.whoami(apiKey: trimmed)
             // Real key authenticated successfully — user has explicitly chosen
             // to leave demo mode. Clear the persisted flag so the DEMO pill
             // disappears. (We do this only AFTER whoami succeeds; if the
@@ -92,13 +110,13 @@ final class DashboardViewModel: ObservableObject {
             // 401/403 failures are handled in the catch branch below and
             // intentionally leave the flag alone.)
             DemoMode.isPersistedActive = false
-            try KeychainStore.save(trimmed, for: .anthropicAdminKey)
+            try keychain.save(trimmed)
             maskedKey = AnthropicKeyValidation.masked(trimmed)
             // Now fetch cost. If this fails the key is still saved (it auth'd) —
             // we surface the error in the dashboard state, not back to onboarding.
             do {
-                let report = try await client.monthToDateCost()
-                DashboardCache.save(report: report, orgName: identity.name)
+                let report = try await cost.monthToDateCost(apiKey: trimmed)
+                cache.save(report: report, orgName: identity.name)
                 state = .loaded(report: report, orgName: identity.name)
             } catch {
                 state = .failed(message: error.localizedDescription)
@@ -124,7 +142,7 @@ final class DashboardViewModel: ObservableObject {
             return
         }
         do {
-            guard let key = try KeychainStore.load(.anthropicAdminKey) else {
+            guard let key = try keychain.load() else {
                 state = .needsCredentials
                 maskedKey = nil
                 return
@@ -144,9 +162,9 @@ final class DashboardViewModel: ObservableObject {
         // Drop the cached snapshot too so a fresh connection (potentially a
         // different Anthropic org) doesn't briefly flash the previous owner's
         // data while it loads.
-        DashboardCache.clear()
+        cache.clear()
         do {
-            try KeychainStore.delete(.anthropicAdminKey)
+            try keychain.delete()
         } catch {
             // We still flip back to onboarding — the user clearly wants out.
             state = .failed(message: "Disconnected, but Keychain reported: \(error.localizedDescription)")
@@ -171,18 +189,17 @@ final class DashboardViewModel: ObservableObject {
         }
         defer { isRefreshing = false }
 
-        let client = AnthropicClient(apiKey: key)
         do {
-            async let identity = client.whoami()
-            async let report = client.monthToDateCost()
+            async let identity = cost.whoami(apiKey: key)
+            async let report = cost.monthToDateCost(apiKey: key)
             let (orgID, mtd) = try await (identity, report)
             maskedKey = AnthropicKeyValidation.masked(key)
-            DashboardCache.save(report: mtd, orgName: orgID.name)
+            cache.save(report: mtd, orgName: orgID.name)
             state = .loaded(report: mtd, orgName: orgID.name)
         } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
             // Token went bad — wipe it (and the cache) and force re-onboarding.
-            try? KeychainStore.delete(.anthropicAdminKey)
-            DashboardCache.clear()
+            try? keychain.delete()
+            cache.clear()
             maskedKey = nil
             state = .needsCredentials
         } catch {

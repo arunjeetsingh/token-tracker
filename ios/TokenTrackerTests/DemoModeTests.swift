@@ -155,25 +155,12 @@ final class DemoModeTests: XCTestCase {
         XCTAssertNotNil(vm.maskedKey, "Demo-mode refresh must keep the masked key so Settings stays consistent")
     }
 
-    /// Manual verification scenario for bug 2 (DEMO pill leaks after
-    /// switching from demo to a real admin key):
-    ///
-    /// The flag-clear lives in `DashboardViewModel.connect(using:)`
-    /// immediately after `client.whoami()` succeeds. We can't easily unit-test
-    /// this path without mocking `AnthropicClient` (which currently has no
-    /// protocol seam). To verify manually:
-    ///   1. Launch app, paste `DemoMode.appReviewKey` in onboarding → demo
-    ///      mode persists, DEMO pill visible.
-    ///   2. Tap Disconnect.
-    ///   3. Paste a real admin key, tap Save & Connect.
-    ///   4. On success, the DEMO pill must NOT appear on the dashboard.
-    ///   5. If the new key auth-fails (401/403), the persisted flag is
-    ///      intentionally left alone so transient state isn't lost.
-    func testConnectRealKey_clearsPersistedDemoFlag_manualScenarioDocumented() {
-        // Sanity: flag round-trip already covered by testPersistedActive_roundTrip.
-        // This test exists purely as a discoverable anchor for the manual scenario above.
-        XCTAssertFalse(DemoMode.isPersistedActive)
-    }
+    /// Bug 2 (DEMO pill leaks after switching from demo to a real admin key) is
+    /// now covered by unit tests, thanks to the `CostProviding` seam on
+    /// `DashboardViewModel`. See `DashboardViewModelTests`:
+    ///   - `testConnect_validKey_clearsPersistedDemoFlag` — success clears it.
+    ///   - `testConnect_authFailure_preservesPersistedDemoFlag` — 401/403 leaves
+    ///     it alone so a transient bad-key attempt doesn't strand a reviewer.
 
     func testIsEnabled_honorsPersistedFlag() {
         // Pre-condition: launch args aren't set in a unit test, so the only
