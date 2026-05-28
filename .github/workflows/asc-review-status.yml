@@ -46,8 +46,13 @@ jobs:
                   f"https://api.appstoreconnect.apple.com/v1{path}",
                   headers={"Authorization": f"Bearer {token}"},
               )
-              with urllib.request.urlopen(req) as r:
-                  return json.load(r)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      return json.load(r)
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode(errors='replace')
+                  print(f"!! HTTP {e.code} on {path}\n{body}")
+                  return {"data": [], "_error": True}
 
           # 1) Find the app id by bundle id
           apps = get(f"/apps?filter[bundleId]={bundle}")
@@ -60,7 +65,8 @@ jobs:
           print(json.dumps({"id": app_id, "name": app["attributes"].get("name"), "bundleId": app["attributes"].get("bundleId")}, indent=2))
 
           # 2) App Store Versions (review state lives here)
-          versions = get(f"/apps/{app_id}/appStoreVersions?limit=5&sort=-createdDate")
+          # appStoreVersions doesn't support sort=-createdDate; use no sort and let API return latest first
+          versions = get(f"/apps/{app_id}/appStoreVersions?limit=5")
           print("\n== APP STORE VERSIONS (latest 5) ==")
           for v in versions.get("data", []):
               a = v["attributes"]
@@ -74,7 +80,7 @@ jobs:
               }, indent=2))
 
           # 3) Review submissions (the new "submission" model Apple introduced)
-          subs = get(f"/reviewSubmissions?filter[app]={app_id}&limit=5&sort=-submittedDate")
+          subs = get(f"/reviewSubmissions?filter[app]={app_id}&limit=5")
           print("\n== REVIEW SUBMISSIONS (latest 5) ==")
           for s in subs.get("data", []):
               a = s["attributes"]
