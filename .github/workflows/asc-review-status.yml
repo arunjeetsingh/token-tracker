@@ -1,0 +1,95 @@
+name: ASC review status
+
+# Manual workflow: queries App Store Connect API for the current review
+# state of TokenCounter (latest app store version + review submission).
+# Outputs human-readable JSON to the run log so we can see review progress
+# without storing the issuer id / key id outside GH secrets.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    environment: testflight
+    steps:
+      - name: Install PyJWT
+        run: pip3 install pyjwt cryptography
+      - name: Query ASC review status
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          BUNDLE_ID: ai.openclaw.tokentracker.TokenTracker
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, os, time, urllib.request, urllib.error
+          import jwt  # PyJWT is preinstalled on ubuntu-latest? if not, fall back to pip
+
+          key_b64 = os.environ["KEY_B64"]
+          key_pem = base64.b64decode(key_b64).decode()
+          key_id = os.environ["KEY_ID"]
+          iss    = os.environ["ISSUER_ID"]
+          bundle = os.environ["BUNDLE_ID"]
+
+          now = int(time.time())
+          token = jwt.encode(
+              {"iss": iss, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"},
+              key_pem,
+              algorithm="ES256",
+              headers={"kid": key_id, "typ": "JWT"},
+          )
+
+          def get(path):
+              req = urllib.request.Request(
+                  f"https://api.appstoreconnect.apple.com/v1{path}",
+                  headers={"Authorization": f"Bearer {token}"},
+              )
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          # 1) Find the app id by bundle id
+          apps = get(f"/apps?filter[bundleId]={bundle}")
+          if not apps.get("data"):
+              print("NO APP FOUND for bundle", bundle)
+              raise SystemExit(1)
+          app = apps["data"][0]
+          app_id = app["id"]
+          print("== APP ==")
+          print(json.dumps({"id": app_id, "name": app["attributes"].get("name"), "bundleId": app["attributes"].get("bundleId")}, indent=2))
+
+          # 2) App Store Versions (review state lives here)
+          versions = get(f"/apps/{app_id}/appStoreVersions?limit=5&sort=-createdDate")
+          print("\n== APP STORE VERSIONS (latest 5) ==")
+          for v in versions.get("data", []):
+              a = v["attributes"]
+              print(json.dumps({
+                  "id": v["id"],
+                  "versionString": a.get("versionString"),
+                  "appStoreState": a.get("appStoreState"),
+                  "releaseType": a.get("releaseType"),
+                  "createdDate": a.get("createdDate"),
+                  "earliestReleaseDate": a.get("earliestReleaseDate"),
+              }, indent=2))
+
+          # 3) Review submissions (the new "submission" model Apple introduced)
+          subs = get(f"/reviewSubmissions?filter[app]={app_id}&limit=5&sort=-submittedDate")
+          print("\n== REVIEW SUBMISSIONS (latest 5) ==")
+          for s in subs.get("data", []):
+              a = s["attributes"]
+              print(json.dumps({
+                  "id": s["id"],
+                  "state": a.get("state"),
+                  "submittedDate": a.get("submittedDate"),
+                  "platform": a.get("platform"),
+              }, indent=2))
+
+          # 4) Items in the latest submission
+          if subs.get("data"):
+              sub_id = subs["data"][0]["id"]
+              items = get(f"/reviewSubmissions/{sub_id}/items")
+              print(f"\n== ITEMS in submission {sub_id} ==")
+              print(json.dumps(items.get("data", []), indent=2))
+          PY
+        shell: bash
