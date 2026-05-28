@@ -19,6 +19,15 @@ actor AnthropicClient {
         self.baseURL = baseURL
         self.apiVersion = apiVersion
         self.session = session
+        self.decoder = Self.sharedDecoder
+    }
+
+    /// Shared across every client instance: the decoder and its date strategy
+    /// are stateless once configured, so there's no reason to rebuild them per
+    /// `init`. Callers that construct a client per request (e.g.
+    /// `LiveCostProvider`) then pay only for the tiny actor wrapper. Mirrors the
+    /// `JSONDecoder.snapshot` pattern in `DashboardCache`.
+    private static let sharedDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
@@ -31,8 +40,8 @@ actor AnthropicClient {
                 debugDescription: "unsupported ISO8601 timestamp: \(str)"
             )
         }
-        self.decoder = decoder
-    }
+        return decoder
+    }()
 
     /// GET /v1/organizations/me — quick auth sanity check.
     func whoami() async throws -> AnthropicAPI.OrgIdentity {

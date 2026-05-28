@@ -15,8 +15,8 @@ import Foundation
 /// through the initializer would add surface area for no testability gain.
 
 /// Fetches organization identity and month-to-date cost for a given admin key.
-/// The key is passed per call so the view model never has to hold a live
-/// client instance (and so a mock can vary its response per key).
+/// The key is passed per call so the view model never has to hold a live client
+/// instance; the live wrapper builds a throwaway `AnthropicClient` each call.
 protocol CostProviding {
     func whoami(apiKey: String) async throws -> AnthropicAPI.OrgIdentity
     func monthToDateCost(apiKey: String) async throws -> MTDCost
@@ -39,8 +39,10 @@ protocol ReportCaching {
 // MARK: - Production implementations
 
 /// Wraps `AnthropicClient`. A fresh client is created per call; construction is
-/// trivial (no network) and the two calls in `refresh(using:)` still run
-/// concurrently via the view model's `async let`.
+/// cheap — no network, and the decoder is a shared `static let` on
+/// `AnthropicClient`, so each instance is just a small actor wrapper. The two
+/// calls in `refresh(using:)` still run concurrently via the view model's
+/// `async let`.
 struct LiveCostProvider: CostProviding {
     func whoami(apiKey: String) async throws -> AnthropicAPI.OrgIdentity {
         try await AnthropicClient(apiKey: apiKey).whoami()
