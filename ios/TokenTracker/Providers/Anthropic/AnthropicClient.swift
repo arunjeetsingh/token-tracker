@@ -365,14 +365,14 @@ extension AnthropicClient {
 /// `date` is the start of the day (UTC), `cost` is the finalized total for
 /// that day across all models. Today is intentionally excluded — see
 /// `MTDCost.dailySpend` for why.
-struct DailySpend: Equatable, Hashable {
+struct DailySpend: Equatable, Hashable, Codable {
     let date: Date
     let cost: Money
 }
 
 /// One model's contribution to the month-to-date spend. Sorted descending
 /// by `cost` by `AnthropicClient`. UI picks top N for display.
-struct ModelSpend: Equatable, Hashable {
+struct ModelSpend: Equatable, Hashable, Codable {
     /// Raw Anthropic model id (e.g. `claude-opus-4-7`).
     let modelId: String
     /// Pretty name (e.g. `Claude Opus 4.7`). May fall back to `modelId`
@@ -384,7 +384,7 @@ struct ModelSpend: Equatable, Hashable {
 /// Composite month-to-date number returned to the UI. `total` is what we
 /// display front-and-center; the other fields exist so the UI can disclose
 /// the gap honestly ("$607.12 · including ~$19.81 estimate for today").
-struct MTDCost: Equatable {
+struct MTDCost: Equatable, Codable {
     let finalizedCost: Money
     let todayEstimatedCost: Money
     /// Models that appeared in today's usage but had no pricing entry.

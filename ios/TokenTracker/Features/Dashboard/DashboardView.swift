@@ -10,6 +10,14 @@ struct DashboardView: View {
                 .navigationTitle(navigationTitle)
                 .navigationBarTitleDisplayMode(viewModel.state == .needsCredentials ? .inline : .large)
                 .toolbar { toolbar }
+                .safeAreaInset(edge: .bottom, alignment: .center) {
+                    // Only show the studio footer once the user has gotten
+                    // past onboarding. While they're entering a key the
+                    // footer would just be visual noise.
+                    if viewModel.state != .needsCredentials {
+                        studioFooter
+                    }
+                }
         }
         .task { await viewModel.bootstrap() }
         .sheet(isPresented: $showSettings) {
@@ -27,18 +35,19 @@ struct DashboardView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        if viewModel.state.isLoaded {
+        // Settings + Refresh are visible from the moment the dashboard chrome
+        // is showing, including during the very first load when the body is
+        // still a spinner. Refresh is disabled while loading or refreshing
+        // (and the button itself doubles as the progress indicator so the
+        // user has a single, predictable place to look for "is it doing
+        // anything"). Hidden only during onboarding, where they'd be moot.
+        if viewModel.state != .needsCredentials {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 8) {
                     if DemoMode.isEnabled {
                         demoPill
                     }
-                    Button {
-                        Task { await viewModel.refresh() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Refresh")
+                    refreshButton
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
@@ -50,6 +59,38 @@ struct DashboardView: View {
                 .accessibilityLabel("Settings")
             }
         }
+    }
+
+    /// Refresh button that morphs into an inline progress indicator while a
+    /// refresh is in flight (either the initial load or a manual tap).
+    /// The user always sees *some* affordance in the toolbar slot, so there
+    /// is no "did anything happen?" gap after tapping.
+    private var refreshButton: some View {
+        Button {
+            Task { await viewModel.refresh() }
+        } label: {
+            if isBusy {
+                ProgressView()
+                    // ProgressView() defaults to ~22pt; nudge to match the
+                    // 17pt SF Symbol weight of the idle state so the toolbar
+                    // doesn't jump.
+                    .controlSize(.small)
+            } else {
+                Image(systemName: "arrow.clockwise")
+            }
+        }
+        .disabled(isBusy)
+        .accessibilityLabel(isBusy ? "Refreshing" : "Refresh")
+    }
+
+    /// Either the first-ever load (state == .loading) or a manual refresh
+    /// while the dashboard has cached data on screen (isRefreshing == true).
+    /// `.idle` is a transient pre-bootstrap state and shouldn't count as
+    /// busy from a user-facing perspective, but the refresh button is also
+    /// hidden then because state == .needsCredentials hides the whole
+    /// toolbar group.
+    private var isBusy: Bool {
+        viewModel.state == .loading || viewModel.isRefreshing
     }
 
     // Small, understated "DEMO" indicator so reviewers (and ourselves)
@@ -64,6 +105,23 @@ struct DashboardView: View {
             .foregroundStyle(.orange)
             .clipShape(Capsule())
             .accessibilityLabel("Demo mode")
+    }
+
+    /// Tappable "from maximumimpact.studio" line that lives at the bottom of
+    /// the screen. Replaces the old top-of-dashboard org pill. Hidden during
+    /// onboarding (no point branding an empty key form).
+    private var studioFooter: some View {
+        // Use the SwiftUI Link API rather than a custom Button so the system
+        // applies the standard tap target + URL handling. The font is small
+        // enough to read as a footer credit; the secondary color keeps it
+        // from competing with the headline number.
+        Link(destination: URL(string: "https://maximumimpact.studio")!) {
+            Text("from maximumimpact.studio")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 8)
+        .accessibilityLabel("Open maximumimpact.studio")
     }
 
     @ViewBuilder
@@ -83,10 +141,10 @@ struct DashboardView: View {
     }
 
     private func loadedView(report: MTDCost, orgName: String) -> some View {
-        // Layout intent: hero (org pill + big number + intraday note) sits
-        // slightly above visual center; sparkline + top-models stack fills
-        // the space below. This is deliberate — PR #23's screenshot showed
-        // "mostly empty space"; ADR-011 explains why we fill it.
+        // Layout intent: hero (org name + big number + intraday note) sits
+        // slightly above visual center; chart + top-models stack fills the
+        // space below. The studio attribution footer lives in safeAreaInset
+        // and is separate from this hero.
         VStack(spacing: 16) {
             Spacer(minLength: 16)
             VStack(spacing: 12) {
@@ -96,6 +154,7 @@ struct DashboardView: View {
                 Text(report.total.formatted())
                     .font(.system(size: 64, weight: .semibold, design: .rounded))
                     .monospacedDigit()
+                    .accessibilityLabel("Month to date, \(report.total.formatted()), for \(orgName)")
                 Text("Month to date · as of \(report.asOf, style: .time)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -114,7 +173,7 @@ struct DashboardView: View {
             }
             VStack(spacing: 24) {
                 if !report.dailySpend.isEmpty {
-                    Sparkline(data: report.dailySpend)
+                    SpendBarChart(data: report.dailySpend)
                 }
                 if !report.modelBreakdown.isEmpty {
                     ModelBreakdown(models: report.modelBreakdown)

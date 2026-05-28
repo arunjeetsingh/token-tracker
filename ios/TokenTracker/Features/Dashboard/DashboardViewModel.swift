@@ -5,6 +5,13 @@ import SwiftUI
 final class DashboardViewModel: ObservableObject {
     @Published private(set) var state: DashboardState = .idle
 
+    /// True while a network refresh is in flight against a real Anthropic
+    /// key. Independent of `state` so the dashboard can stay on `.loaded`
+    /// (showing cached or last-fetched data) while the refresh button
+    /// surfaces a progress indicator. Demo mode does not set this — the
+    /// snapshot resolves synchronously.
+    @Published private(set) var isRefreshing: Bool = false
+
     /// Last successfully-used key, kept in memory only so Settings can show a
     /// masked rendering without re-reading the Keychain. Reset on disconnect.
     @Published private(set) var maskedKey: String?
@@ -41,6 +48,15 @@ final class DashboardViewModel: ObservableObject {
                 return
             }
             maskedKey = AnthropicKeyValidation.masked(key)
+            // Show cached data immediately so the user never stares at an
+            // empty screen on launch. The refresh below will replace it
+            // (or, on auth failure, the keychain wipe in refresh(using:)
+            // will already have cleared the cache). On cache miss we still
+            // fall through to .loading so the user sees the spinner — that
+            // path is unchanged from before.
+            if let cached = DashboardCache.load() {
+                state = .loaded(report: cached.report, orgName: cached.orgName)
+            }
             await refresh(using: key)
         } catch {
             state = .failed(message: "Keychain error: \(error.localizedDescription)")
@@ -82,6 +98,7 @@ final class DashboardViewModel: ObservableObject {
             // we surface the error in the dashboard state, not back to onboarding.
             do {
                 let report = try await client.monthToDateCost()
+                DashboardCache.save(report: report, orgName: identity.name)
                 state = .loaded(report: report, orgName: identity.name)
             } catch {
                 state = .failed(message: error.localizedDescription)
@@ -124,6 +141,10 @@ final class DashboardViewModel: ObservableObject {
         // the user toggled between real and demo over the lifetime of the
         // install — it's a no-op when nothing's stored.
         DemoMode.isPersistedActive = false
+        // Drop the cached snapshot too so a fresh connection (potentially a
+        // different Anthropic org) doesn't briefly flash the previous owner's
+        // data while it loads.
+        DashboardCache.clear()
         do {
             try KeychainStore.delete(.anthropicAdminKey)
         } catch {
@@ -136,21 +157,42 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func refresh(using key: String) async {
-        state = .loading
+        // If we already have data on screen (cached snapshot from bootstrap,
+        // or a previously-loaded report from a manual refresh), keep it
+        // visible and just surface the refresh indicator in the toolbar.
+        // Only fall back to the full-screen spinner when there's literally
+        // nothing to show — first install, post-disconnect, or after an
+        // error wiped the loaded state.
+        let hasSomethingToShow = state.isLoaded
+        if hasSomethingToShow {
+            isRefreshing = true
+        } else {
+            state = .loading
+        }
+        defer { isRefreshing = false }
+
         let client = AnthropicClient(apiKey: key)
         do {
             async let identity = client.whoami()
             async let report = client.monthToDateCost()
             let (orgID, mtd) = try await (identity, report)
             maskedKey = AnthropicKeyValidation.masked(key)
+            DashboardCache.save(report: mtd, orgName: orgID.name)
             state = .loaded(report: mtd, orgName: orgID.name)
         } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
-            // Token went bad — wipe it and force re-onboarding.
+            // Token went bad — wipe it (and the cache) and force re-onboarding.
             try? KeychainStore.delete(.anthropicAdminKey)
+            DashboardCache.clear()
             maskedKey = nil
             state = .needsCredentials
         } catch {
-            state = .failed(message: error.localizedDescription)
+            // Network / transient failure: if we have cached data on screen,
+            // leave it there. The user can see the staleness via the report's
+            // `asOf` timestamp and the cleared refresh indicator. Only
+            // surface .failed when there's nothing else to look at.
+            if !hasSomethingToShow {
+                state = .failed(message: error.localizedDescription)
+            }
         }
     }
 }
