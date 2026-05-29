@@ -14,7 +14,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Anthropic account") {
+                Section("Anthropic API key") {
                     LabeledContent("Organization", value: orgName ?? "—")
                     LabeledContent("Admin key", value: maskedKey ?? "Not set")
                         .font(.body.monospaced())
@@ -26,12 +26,13 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             if isWorking { ProgressView() }
-                            Text("Disconnect account")
+                            Text("Remove API key")
                         }
                     }
                     .disabled(isWorking || maskedKey == nil)
                 } footer: {
                     Text("Removes the admin key from this device's Keychain. You'll need to paste it again to reconnect.")
+                    // Note: this app has no login/account; the key is the only stored credential.
                 }
 
                 Section("About") {
@@ -47,7 +48,7 @@ struct SettingsView: View {
                 }
             }
             .confirmationDialog(
-                "Disconnect this account?",
+                "Remove the saved API key?",
                 isPresented: $showConfirm,
                 titleVisibility: .visible
             ) {
