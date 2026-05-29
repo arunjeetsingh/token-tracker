@@ -85,7 +85,7 @@ struct OnboardingView: View {
             stepCard(
                 number: 2,
                 title: "Open the Admin Keys page",
-                detail: "Tap the button to sign in to console.anthropic.com inside this app. You'll land directly on the Admin Keys page.",
+                detail: "Tap the button to open console.anthropic.com inside this app. You'll land directly on the Admin Keys page.",
                 action: AnyView(
                     Button {
                         safariURL = SafariURL(url: adminKeysURL)
