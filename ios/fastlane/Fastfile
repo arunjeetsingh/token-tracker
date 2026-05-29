@@ -2,6 +2,10 @@
 #
 # Lanes:
 #   - generate    : Regenerate .xcodeproj from project.yml via xcodegen.
+#   - bump_marketing : Increment the patch component of MARKETING_VERSION
+#                   (e.g. 1.0.9 -> 1.0.10) so every TestFlight build gets a
+#                   distinct user-visible version. Override with the
+#                   MARKETING_VERSION env var for a manual minor/major bump.
 #   - bump_build  : Bump CURRENT_PROJECT_VERSION to a monotonically-increasing
 #                   Unix timestamp. ASC requires the bundle version to be
 #                   strictly greater than the previously uploaded one for the
@@ -45,6 +49,49 @@ platform :ios do
   desc "Regenerate the Xcode project from project.yml."
   lane :generate do
     in_ios_dir { sh("xcodegen generate") }
+  end
+
+  desc "Increment the patch component of MARKETING_VERSION (e.g. 1.0.9 -> 1.0.10)."
+  lane :bump_marketing do
+    # Bump the patch number on every TestFlight build so each beta carries a
+    # distinct user-visible version. Allow MARKETING_VERSION env override for
+    # manual control (e.g. to roll a minor/major instead).
+    contents = File.read(PROJECT_YML)
+    current  = contents[/^\s*MARKETING_VERSION:\s*"?([^"\n]+)"?/, 1]
+    UI.user_error!("bump_marketing: could not find MARKETING_VERSION in #{PROJECT_YML}") if current.nil?
+
+    if ENV["MARKETING_VERSION"] && !ENV["MARKETING_VERSION"].empty?
+      new_version = ENV["MARKETING_VERSION"]
+    else
+      parts = current.strip.split(".")
+      # Normalize to MAJOR.MINOR.PATCH, defaulting missing components to 0.
+      major = parts[0] || "0"
+      minor = parts[1] || "0"
+      patch = parts[2] || "0"
+      unless patch =~ /\A\d+\z/
+        UI.user_error!("bump_marketing: patch component #{patch.inspect} of MARKETING_VERSION #{current.inspect} is not numeric")
+      end
+      new_version = "#{major}.#{minor}.#{patch.to_i + 1}"
+    end
+
+    UI.message("Bumping MARKETING_VERSION #{current.inspect} -> #{new_version.inspect}")
+    updated = contents.sub(/^(\s*)MARKETING_VERSION:\s*"?[^"\n]+"?/,
+                           %(\\1MARKETING_VERSION: "#{new_version}"))
+    if updated == contents
+      UI.user_error!("bump_marketing: failed to update MARKETING_VERSION in #{PROJECT_YML}")
+    end
+    File.write(PROJECT_YML, updated)
+    in_ios_dir { sh("xcodegen generate") }
+
+    # Verify the regenerated project actually carries the bumped version.
+    pbx = File.join(PROJECT, "project.pbxproj")
+    if File.exist?(pbx)
+      pbx_contents = File.read(pbx)
+      unless pbx_contents.include?("MARKETING_VERSION = #{new_version}")
+        UI.user_error!("bump_marketing: xcodegen did not apply MARKETING_VERSION=#{new_version} to project.pbxproj")
+      end
+    end
+    new_version
   end
 
   desc "Set CURRENT_PROJECT_VERSION to a monotonically-increasing Unix timestamp."
@@ -156,19 +203,24 @@ platform :ios do
     cert_id      = lane_context[SharedValues::CERT_CERTIFICATE_ID]
     UI.message("Using profile=#{profile_name.inspect} cert=#{cert_id.inspect}")
 
+    # Bump the user-visible patch version (1.0.9 -> 1.0.10) on every TestFlight
+    # build, then bump the build number. Order matters only cosmetically.
+    bump_marketing
     bump_build
 
     # Capture the build number that bump_build just wrote so we can also
     # pass it explicitly to xcodebuild (belt-and-suspenders: even if the
     # pbxproj edit somehow doesn't carry through, xcargs wins).
     bumped_build = File.read(PROJECT_YML)[/^\s*CURRENT_PROJECT_VERSION:\s*"?([^"\n]+)"?/, 1]
-    UI.message("build_app will sign with CURRENT_PROJECT_VERSION=#{bumped_build.inspect}")
+    bumped_marketing = File.read(PROJECT_YML)[/^\s*MARKETING_VERSION:\s*"?([^"\n]+)"?/, 1]
+    UI.message("build_app will sign with CURRENT_PROJECT_VERSION=#{bumped_build.inspect} MARKETING_VERSION=#{bumped_marketing.inspect}")
 
     in_ios_dir do
       team_id = ENV["APPLE_TEAM_ID"] || ENV["FASTLANE_TEAM_ID"]
       xcargs_parts = ["-allowProvisioningUpdates"]
       xcargs_parts << "DEVELOPMENT_TEAM=#{team_id}" if team_id && !team_id.empty?
       xcargs_parts << "CURRENT_PROJECT_VERSION=#{bumped_build}" if bumped_build && !bumped_build.empty?
+      xcargs_parts << "MARKETING_VERSION=#{bumped_marketing}" if bumped_marketing && !bumped_marketing.empty?
       # Force manual signing in CI so xcodebuild uses the AppStore profile
       # fastlane just fetched, instead of trying to auto-manage a (missing)
       # Development profile.

@@ -16,7 +16,7 @@ on:
   #     - ".github/workflows/testflight.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   testflight:
@@ -87,3 +87,31 @@ jobs:
           LC_ALL:                            "en_US.UTF-8"
           BETA_CHANGELOG:                    ${{ github.event.inputs.changelog }}
         run: fastlane beta
+
+      - name: Commit bumped MARKETING_VERSION back to main
+        # fastlane's bump_marketing lane increments the patch component of
+        # MARKETING_VERSION in ios/project.yml during the build. Persist that
+        # bump to the repo so the next TestFlight build starts from the new
+        # version (1.0.9 -> 1.0.10 -> 1.0.11 ...) instead of always re-bumping
+        # the same source value. Only the project.yml MARKETING_VERSION line is
+        # committed; the timestamp build number is intentionally left local.
+        if: success()
+        run: |
+          set -euo pipefail
+          # Capture the bumped version from the working-tree project.yml.
+          VERSION=$(grep -E '^[[:space:]]*MARKETING_VERSION:' ios/project.yml | head -1 | sed -E 's/.*MARKETING_VERSION:[[:space:]]*"?([^"]+)"?.*/\1/')
+          echo "Persisting MARKETING_VERSION=$VERSION to main"
+          # Discard all other build-time mutations (build number, generated
+          # project, etc.), then re-apply ONLY the MARKETING_VERSION line on a
+          # clean checkout so the commit is a minimal one-line bump.
+          git checkout -- ios/project.yml
+          sed -i '' -E "s/^([[:space:]]*MARKETING_VERSION:).*/\1 \"$VERSION\"/" ios/project.yml
+          if git diff --quiet -- ios/project.yml; then
+            echo "No MARKETING_VERSION change to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ios/project.yml
+          git commit -m "chore(ios): bump MARKETING_VERSION to $VERSION [skip ci]"
+          git push origin HEAD:main
