@@ -14,7 +14,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Anthropic API key") {
+                Section("Anthropic Admin key") {
                     LabeledContent("Organization", value: orgName ?? "—")
                     LabeledContent("Admin key", value: maskedKey ?? "Not set")
                         .font(.body.monospaced())
@@ -26,7 +26,7 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             if isWorking { ProgressView() }
-                            Text("Remove API key")
+                            Text("Remove Admin key")
                         }
                     }
                     .disabled(isWorking || maskedKey == nil)
@@ -48,7 +48,7 @@ struct SettingsView: View {
                 }
             }
             .confirmationDialog(
-                "Remove the saved API key?",
+                "Remove the saved Admin key?",
                 isPresented: $showConfirm,
                 titleVisibility: .visible
             ) {
