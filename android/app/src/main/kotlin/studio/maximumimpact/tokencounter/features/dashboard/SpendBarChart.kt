@@ -22,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -87,12 +89,24 @@ fun SpendBarChart(
                 daily.forEachIndexed { index, day ->
                     val fraction = day.cost.cents.toFloat() / maxCents.toFloat()
                     val selected = selectedIndex == index
+                    val description = "${day.date.format(chartCaptionFormatter)}, ${day.cost.formatted()}"
+                    // The tap target is the full-height per-day slot, not the
+                    // visible bar — low-spend days bottom out at 2dp, which
+                    // would be an unusable (and inaccessible) tap target.
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                selectedIndex = if (selected) null else index
+                            }
+                            .semantics { contentDescription = description },
                         contentAlignment = Alignment.BottomCenter
                     ) {
+                        // Visual bar only — no interaction of its own.
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -100,12 +114,6 @@ fun SpendBarChart(
                                 .height((fraction * CHART_HEIGHT_DP).dp.coerceAtLeast(2.dp))
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(AccentBlue.copy(alpha = if (selected) 1f else 0.55f))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) {
-                                    selectedIndex = if (selected) null else index
-                                }
                         )
                     }
                 }

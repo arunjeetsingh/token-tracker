@@ -111,7 +111,7 @@ fun OnboardingScreen(
         StepCard(
             number = 2,
             title = "Open the Admin Keys page",
-            detail = "Sign in to the Anthropic Console to manage admin keys."
+            detail = "Open the Anthropic Console to manage admin keys."
         ) {
             Button(onClick = { uriHandler.openUri(ADMIN_KEYS_URL) }) {
                 Text("Open Admin Keys")

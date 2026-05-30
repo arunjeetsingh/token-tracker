@@ -51,6 +51,11 @@ fun TokenCounterApp() {
 
             is DashboardState.NeedsCredentials -> OnboardingScreen(
                 onConnect = { key ->
+                    // TODO(data-layer PR): gate on the real key — case-insensitive
+                    //   DemoData.REVIEW_KEY enters demo mode (mirroring the iOS
+                    //   isReviewKey() path); any other key hits the Admin API.
+                    //   For this UI-only milestone, any non-blank key loads the
+                    //   canned demo snapshot.
                     connectedKey = key
                     loadDemo()
                 }
@@ -66,8 +71,10 @@ fun TokenCounterApp() {
             )
 
             is DashboardState.Failed -> DashboardScreen(
-                // No dedicated error screen in this UI-only port; loaded view
-                // is the only rich screen. (Reserved for the data-layer PR.)
+                // TODO(data-layer PR): build the real error view (iOS shows an
+                //   exclamation-triangle, message, and Retry/Disconnect). This
+                //   state is unreachable in the UI-only port — there's no
+                //   network to fail — so we fall back to the loaded demo view.
                 orgName = "",
                 report = DemoData.snapshot().report,
                 isDemo = true,
