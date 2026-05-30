@@ -28,6 +28,7 @@ struct ModelPricing: Equatable {
     /// Anthropic ships new models.
     static let table: [(prefix: String, pricing: ModelPricing)] = [
         // Opus 4.5+ family ($5 / $25 + cache tiers)
+        ("claude-opus-4-8", opus4_5),
         ("claude-opus-4-7", opus4_5),
         ("claude-opus-4-6", opus4_5),
         ("claude-opus-4-5", opus4_5),

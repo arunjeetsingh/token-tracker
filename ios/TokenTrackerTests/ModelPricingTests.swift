@@ -16,6 +16,13 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(p4, ModelPricing.opus4_1)
     }
 
+    func testOpus4_8DatedIdDoesNotFallThroughToLegacy() {
+        // Regression: a dated opus-4-8 id must match the current Opus 4.5+ rate,
+        // not fall through to the legacy `claude-opus-4` ($15/$75) entry.
+        let p = ModelPricing.lookup("claude-opus-4-8-20260115")
+        XCTAssertEqual(p, ModelPricing.opus4_5)
+    }
+
     func testSonnetAndHaikuPricing() {
         XCTAssertEqual(ModelPricing.lookup("claude-sonnet-4-5"), ModelPricing.sonnet4)
         XCTAssertEqual(ModelPricing.lookup("claude-haiku-4-5"), ModelPricing.haiku4_5)
