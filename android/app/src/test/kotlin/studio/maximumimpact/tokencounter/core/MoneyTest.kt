@@ -29,13 +29,23 @@ class MoneyTest {
     }
 
     @Test
-    fun fromAnthropicCentsString_truncatesSubCentFractionsTowardZero() {
+    fun fromAnthropicCentsString_collapsesToWholeCentsLikeIos() {
         // Despite the "USD" label, the value is *cents*. "2013.9595" -> 2013¢.
         assertEquals(Money(2013), Money.fromAnthropicCentsString("2013.9595"))
         assertEquals(Money(100), Money.fromAnthropicCentsString("100"))
-        // Half a cent truncates to zero.
-        assertEquals(Money(0), Money.fromAnthropicCentsString("0.5"))
         assertEquals(Money(0), Money.fromAnthropicCentsString("0"))
+    }
+
+    @Test
+    fun fromAnthropicCentsString_roundsHalfUpToMatchIos() {
+        // iOS NSDecimalNumber.int64Value rounds (half-up); we must agree so the
+        // same payload never produces a 1¢ cross-platform difference.
+        // "0.999" × 100 = 99.9 -> 100 -> 1¢ (NOT truncated to 0¢).
+        assertEquals(Money(1), Money.fromAnthropicCentsString("0.999"))
+        // "0.994" × 100 = 99.4 -> 99 -> 0¢.
+        assertEquals(Money(0), Money.fromAnthropicCentsString("0.994"))
+        // "0.5" × 100 = 50 -> exactly 0¢ after ÷100.
+        assertEquals(Money(0), Money.fromAnthropicCentsString("0.5"))
     }
 
     @Test

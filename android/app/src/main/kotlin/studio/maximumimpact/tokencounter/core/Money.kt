@@ -36,14 +36,18 @@ value class Money(val cents: Long) {
         /**
          * Construct from the Anthropic API's stringified cents value (e.g.
          * "2013.9595"). Despite the `currency: "USD"` label the value is cents,
-         * not dollars (see iOS ADR-005). Fractions of a cent are truncated
-         * toward zero. Returns null if [raw] isn't a number.
+         * not dollars (see iOS ADR-005). Returns null if [raw] isn't a number.
+         *
+         * The `×100, round, ÷100` dance mirrors the iOS implementation exactly
+         * (`(dec * 100 as NSDecimalNumber).int64Value / 100`). `int64Value`
+         * rounds half-up rather than truncating, so we round half-up here too —
+         * otherwise the same API payload (e.g. "0.999") could yield a 1¢
+         * difference across platforms.
          */
         fun fromAnthropicCentsString(raw: String): Money? {
             val dec = raw.trim().toBigDecimalOrNull() ?: return null
-            // (dec * 100).toLong() / 100 — truncate sub-cent fractions toward zero.
-            val truncated = dec.multiply(BigDecimal(100)).toLong() / 100
-            return Money(truncated)
+            val cents = dec.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP).toLong() / 100
+            return Money(cents)
         }
 
         /**

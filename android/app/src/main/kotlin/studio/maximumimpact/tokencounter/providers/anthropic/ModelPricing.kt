@@ -84,6 +84,7 @@ data class ModelPricing(
          */
         val TABLE: List<Pair<String, ModelPricing>> = listOf(
             // Opus 4.5+ family ($5 / $25 + cache tiers)
+            "claude-opus-4-8" to OPUS_4_5,
             "claude-opus-4-7" to OPUS_4_5,
             "claude-opus-4-6" to OPUS_4_5,
             "claude-opus-4-5" to OPUS_4_5,

@@ -16,6 +16,9 @@ class ModelPricingTest {
         // Exact current-gen ids resolve to the current high-tier price.
         assertEquals(ModelPricing.OPUS_4_5, ModelPricing.lookup("claude-opus-4-7"))
         assertEquals(ModelPricing.OPUS_4_5, ModelPricing.lookup("claude-opus-4-5"))
+        // Opus 4.8 must price at the current Opus rate, NOT longest-prefix
+        // fall through to legacy "claude-opus-4" ($15/$75) — a 3x overstatement.
+        assertEquals(ModelPricing.OPUS_4_5, ModelPricing.lookup("claude-opus-4-8-20260115"))
         // 4-1 must NOT fall through to the shorter "claude-opus-4" entry.
         assertEquals(ModelPricing.OPUS_4_1, ModelPricing.lookup("claude-opus-4-1-20250805"))
         // Bare "claude-opus-4" + date suffix -> legacy Opus.
