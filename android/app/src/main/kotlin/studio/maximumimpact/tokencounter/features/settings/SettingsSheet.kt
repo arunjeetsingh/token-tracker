@@ -1,0 +1,218 @@
+package studio.maximumimpact.tokencounter.features.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
+
+private const val ADMIN_KEYS_URL = "https://console.anthropic.com/settings/admin-keys"
+
+/**
+ * Settings modal. Kotlin sibling of the iOS `SettingsView` (presented as a
+ * sheet). Shows the connected org + masked key, a destructive "Remove Admin
+ * key" action (guarded by a confirm dialog), and an About section.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsSheet(
+    orgName: String,
+    maskedKey: String,
+    appVersion: String,
+    onDisconnect: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val uriHandler = LocalUriHandler.current
+    var showConfirm by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            // Anthropic Admin key section.
+            SettingsSection(title = "ANTHROPIC ADMIN KEY") {
+                LabeledRow(label = "Organization", value = orgName)
+                LabeledRow(label = "Admin key", value = maskedKey, monospace = true)
+            }
+
+            // Destructive section.
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Remove Admin key",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { showConfirm = true }
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(vertical = 12.dp, horizontal = 14.dp)
+                )
+                Text(
+                    text = "Removes the admin key from this device. " +
+                        "You'll need to paste it again to reconnect.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // About section.
+            SettingsSection(title = "ABOUT") {
+                LabeledRow(label = "App version", value = appVersion)
+                Text(
+                    text = "Anthropic Admin Keys",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { uriHandler.openUri(ADMIN_KEYS_URL) }
+                        .padding(vertical = 12.dp, horizontal = 14.dp)
+                )
+            }
+        }
+    }
+
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text("Remove the saved Admin key?") },
+            text = {
+                Text(
+                    "Your admin key will be removed from this device. The key " +
+                        "itself is not revoked — you can revoke it in the Anthropic Console."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirm = false
+                        onDisconnect()
+                    }
+                ) {
+                    Text("Disconnect", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.5.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun LabeledRow(
+    label: String,
+    value: String,
+    monospace: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp, horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            style = if (monospace) {
+                MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace)
+            } else {
+                MaterialTheme.typography.bodyLarge
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(showBackground = true)
+@Composable
+private fun SettingsSheetPreview() {
+    TokenCounterTheme {
+        // Preview the content directly (a real ModalBottomSheet needs a host).
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text("Settings", style = MaterialTheme.typography.titleLarge)
+            SettingsSection(title = "ANTHROPIC ADMIN KEY") {
+                LabeledRow(label = "Organization", value = "Personal")
+                LabeledRow(label = "Admin key", value = "sk-ant-…w22", monospace = true)
+            }
+        }
+    }
+}

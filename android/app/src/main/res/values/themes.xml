@@ -2,17 +2,18 @@
 <resources>
     <!--
         Base Activity theme. Compose draws the real chrome, so we use
-        Material3.Light.NoActionBar as a thin shell that doesn't render
-        any of its own AppBar or splash decorations.
+        a thin NoActionBar shell that renders none of its own AppBar.
 
-        windowBackground stays white so there's no flash-of-dark-color
-        between launch and first composition.
+        The window background is the always-dark launch color (#12141A) so
+        the brief pre-composition frame matches the iOS launch screen rather
+        than flashing white. Once Compose composes, enableEdgeToEdge() and
+        TokenCounterTheme take over the real light/dark chrome.
     -->
-    <style name="Theme.TokenCounter" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
-        <item name="android:statusBarColor">@android:color/white</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:navigationBarColor">@android:color/white</item>
-        <item name="android:windowLightNavigationBar">true</item>
+    <style name="Theme.TokenCounter" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:statusBarColor">@color/splash_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/splash_background</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>
