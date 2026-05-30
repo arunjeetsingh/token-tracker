@@ -1,0 +1,40 @@
+package studio.maximumimpact.tokencounter.data
+
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+import studio.maximumimpact.tokencounter.core.DemoData
+
+class ReportCacheTest {
+
+    private fun cache() = DataStoreReportCache(InMemoryPreferencesDataStore())
+
+    @Test
+    fun load_returnsNullWhenEmpty() = runTest {
+        assertNull(cache().load())
+    }
+
+    @Test
+    fun save_thenLoad_roundTripsTheReport() = runTest {
+        val cache = cache()
+        val snapshot = DemoData.snapshot()
+
+        cache.save(snapshot.report, snapshot.orgName)
+        val loaded = cache.load()
+
+        assertEquals(snapshot.orgName, loaded?.orgName)
+        assertEquals(snapshot.report, loaded?.report)
+    }
+
+    @Test
+    fun clear_removesTheCachedReport() = runTest {
+        val cache = cache()
+        val snapshot = DemoData.snapshot()
+        cache.save(snapshot.report, snapshot.orgName)
+
+        cache.clear()
+
+        assertNull(cache.load())
+    }
+}
