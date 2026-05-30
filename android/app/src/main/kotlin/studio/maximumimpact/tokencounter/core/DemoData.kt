@@ -21,6 +21,17 @@ object DemoData {
     /** Magic key a reviewer can paste in onboarding to enter demo mode. */
     const val REVIEW_KEY = "sk-ant-demo-2026-05-w22"
 
+    /**
+     * Returns true if [candidate], after trimming whitespace/newlines and
+     * lowercasing, equals [REVIEW_KEY]. Case-insensitive because mobile
+     * keyboards love to autocorrect/auto-capitalize pasted strings. Mirrors
+     * iOS `DemoMode.isReviewKey`.
+     */
+    fun isReviewKey(candidate: String): Boolean {
+        val normalized = candidate.trim().lowercase()
+        return normalized.isNotEmpty() && normalized == REVIEW_KEY
+    }
+
     /** 30 days of canned daily spend in cents — noisy but trending up. */
     private val dailyCents = longArrayOf(
         10_523, 11_247, 12_891, 9_856, 14_203, 15_672, 13_941, 16_808, 18_234, 17_456,
