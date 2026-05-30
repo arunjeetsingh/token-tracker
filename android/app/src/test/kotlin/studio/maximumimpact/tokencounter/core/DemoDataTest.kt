@@ -69,6 +69,20 @@ class DemoDataTest {
     }
 
     @Test
+    fun isReviewKey_isCaseInsensitiveAndTrims() {
+        assertTrue(DemoData.isReviewKey("sk-ant-demo-2026-05-w22"))
+        assertTrue(DemoData.isReviewKey("  SK-ANT-DEMO-2026-05-W22 "))
+        assertTrue(DemoData.isReviewKey("Sk-Ant-Demo-2026-05-W22"))
+    }
+
+    @Test
+    fun isReviewKey_rejectsOtherKeys() {
+        assertTrue(!DemoData.isReviewKey("sk-ant-admin01-realkey"))
+        assertTrue(!DemoData.isReviewKey(""))
+        assertTrue(!DemoData.isReviewKey("   "))
+    }
+
+    @Test
     fun noUnpricedModels() {
         assertTrue(report.unpricedModels.isEmpty())
         assertTrue(!report.hasUnpricedModels)
