@@ -1,5 +1,6 @@
 package studio.maximumimpact.tokencounter.providers.anthropic
 
+import android.util.Log
 import studio.maximumimpact.tokencounter.core.DailySpend
 import studio.maximumimpact.tokencounter.core.Money
 import studio.maximumimpact.tokencounter.core.ModelSpend
@@ -190,18 +191,29 @@ class AnthropicClient(private val api: AnthropicApi) {
     }
 
     private companion object {
+        private const val TAG = "AnthropicClient"
+
         /** ISO-8601 instant string for the start (00:00 UTC) of [day]. */
         fun isoInstant(day: LocalDate): String =
             DateTimeFormatter.ISO_INSTANT.format(day.atStartOfDay(ZoneOffset.UTC).toInstant())
 
-        /** Parse an API timestamp ("2026-05-29T00:00:00Z" or with offset) to its UTC date. */
-        fun parseUtcDate(raw: String): LocalDate? = try {
-            Instant.parse(raw).atOffset(ZoneOffset.UTC).toLocalDate()
-        } catch (_: Exception) {
+        /**
+         * Parse an API timestamp ("2026-05-29T00:00:00Z" or with offset) to its
+         * UTC date. Returns null (and logs) for an unrecognized format so one
+         * odd bucket doesn't crash the load — but the gap is visible in logs
+         * rather than silently dropping a day from the sparkline.
+         */
+        fun parseUtcDate(raw: String): LocalDate? {
             try {
-                OffsetDateTime.parse(raw).atZoneSameInstant(ZoneOffset.UTC).toLocalDate()
+                return Instant.parse(raw).atOffset(ZoneOffset.UTC).toLocalDate()
             } catch (_: Exception) {
-                null
+                // Fall through to the offset parser.
+            }
+            try {
+                return OffsetDateTime.parse(raw).atZoneSameInstant(ZoneOffset.UTC).toLocalDate()
+            } catch (_: Exception) {
+                Log.w(TAG, "Unparseable cost_report timestamp '$raw'; dropping the bucket.")
+                return null
             }
         }
     }

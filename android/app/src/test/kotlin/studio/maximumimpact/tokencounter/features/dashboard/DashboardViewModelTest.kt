@@ -136,6 +136,20 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun connect_authErrorOnCostFetchAfterSave_wipesKeyAndReOnboards() = runTest(dispatcher) {
+        // whoami succeeds (key gets saved), then the cost fetch returns 401/403.
+        cost.reportError = authError()
+        val vm = viewModel()
+
+        val result = vm.connect("sk-ant-admin01-realrealrealrealrealreal")
+
+        assertTrue(result is ConnectResult.Failure)
+        assertEquals(DashboardState.NeedsCredentials, vm.state.value)
+        assertNull("rejected key must not linger in storage", creds.stored)
+        assertNull(cache.cached)
+    }
+
+    @Test
     fun bootstrap_noStoredKey_goesToOnboarding() = runTest(dispatcher) {
         val vm = viewModel()
         vm.bootstrap()

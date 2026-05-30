@@ -105,23 +105,28 @@ class DashboardViewModel(
             _isDemo.value = false
             credentialStore.save(trimmed)
             _maskedKey.value = AnthropicKeyValidation.masked(trimmed)
-            // If the cost fetch fails the key is still saved (it auth'd) — show
-            // the error in the dashboard, not back in onboarding.
+            // The cost fetch: whoami already auth'd, so a *transient* failure
+            // keeps the saved key and shows a dashboard error. But a 401/403
+            // here means the key is bad after all — wipe it and route back to
+            // onboarding, same as refreshUsing().
             try {
                 val report = cost.monthToDateCost(trimmed)
                 cache.save(report, identity.name)
                 _state.value = DashboardState.Loaded(identity.name, report)
+                ConnectResult.Success
             } catch (e: Exception) {
-                _state.value = DashboardState.Failed(e.message ?: "Couldn't load your usage.")
+                if (e.isAnthropicAuthError()) {
+                    wipeCredentialsAndReOnboard()
+                    ConnectResult.Failure(REJECTED_KEY_MESSAGE)
+                } else {
+                    _state.value = DashboardState.Failed(e.message ?: "Couldn't load your usage.")
+                    ConnectResult.Success
+                }
             }
-            ConnectResult.Success
         } catch (e: Exception) {
             _state.value = DashboardState.NeedsCredentials
             if (e.isAnthropicAuthError()) {
-                ConnectResult.Failure(
-                    "Anthropic rejected this key. Double-check you copied an Admin key " +
-                        "(starts with sk-ant-admin01-…) and try again."
-                )
+                ConnectResult.Failure(REJECTED_KEY_MESSAGE)
             } else {
                 ConnectResult.Failure(e.message ?: "Couldn't connect. Check your connection and try again.")
             }
@@ -176,10 +181,7 @@ class DashboardViewModel(
         } catch (e: Exception) {
             if (e.isAnthropicAuthError()) {
                 // Token went bad — wipe it (and the cache) and force re-onboarding.
-                credentialStore.delete()
-                cache.clear()
-                _maskedKey.value = null
-                _state.value = DashboardState.NeedsCredentials
+                wipeCredentialsAndReOnboard()
             } else if (!hasSomethingToShow) {
                 // Transient failure with nothing else to show.
                 _state.value = DashboardState.Failed(e.message ?: "Couldn't load your usage.")
@@ -190,6 +192,15 @@ class DashboardViewModel(
         }
     }
 
+    /** Clears the stored key, cache, and demo flag and returns to onboarding. */
+    private suspend fun wipeCredentialsAndReOnboard() {
+        credentialStore.delete()
+        cache.clear()
+        _isDemo.value = false
+        _maskedKey.value = null
+        _state.value = DashboardState.NeedsCredentials
+    }
+
     private fun loadDemo() {
         val snapshot = DemoData.snapshot()
         _isDemo.value = true
@@ -198,6 +209,10 @@ class DashboardViewModel(
     }
 
     companion object {
+        private const val REJECTED_KEY_MESSAGE =
+            "Anthropic rejected this key. Double-check you copied an Admin key " +
+                "(starts with sk-ant-admin01-…) and try again."
+
         /** Builds a factory wiring the live collaborators from app dependencies. */
         fun factory(
             cost: CostProvider,
