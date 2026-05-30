@@ -14,8 +14,8 @@ A privacy-friendly iOS app to monitor your Anthropic API spend.
 
 ## Get the app
 
-- **TestFlight (beta):** _link coming soon_
-- **App Store:** _coming soon_
+- **App Store (iOS):** [Download TokenCounter](https://apps.apple.com/app/id6772613833)
+- **TestFlight (iOS beta):** [Join the public beta](https://testflight.apple.com/join/Jb7eKT8c)
 
 ## Support
 
