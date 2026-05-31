@@ -6,93 +6,108 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import studio.maximumimpact.tokencounter.core.DemoData
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
+import studio.maximumimpact.tokencounter.credentials.KeystoreCredentialStore
+import studio.maximumimpact.tokencounter.data.DataStoreDemoModeStore
+import studio.maximumimpact.tokencounter.data.DataStoreReportCache
+import studio.maximumimpact.tokencounter.features.dashboard.ConnectResult
 import studio.maximumimpact.tokencounter.features.dashboard.DashboardScreen
 import studio.maximumimpact.tokencounter.features.dashboard.DashboardState
+import studio.maximumimpact.tokencounter.features.dashboard.DashboardViewModel
+import studio.maximumimpact.tokencounter.features.dashboard.ErrorView
 import studio.maximumimpact.tokencounter.features.onboarding.OnboardingScreen
 import studio.maximumimpact.tokencounter.features.settings.SettingsSheet
+import studio.maximumimpact.tokencounter.providers.LiveCostProvider
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 
 private const val APP_VERSION = "1.0"
 
 /**
- * Root composable and the app's single state machine. Mirrors the iOS
- * `DashboardView` which drives the whole UI off one [DashboardState] enum:
- *
- *  - starts in [DashboardState.NeedsCredentials] → [OnboardingScreen]
- *  - "Save & Connect" briefly shows [DashboardState.Loading] then lands on
- *    [DashboardState.Loaded] with the canned demo report
- *  - the gear opens the [SettingsSheet]; "Disconnect" returns to onboarding
- *
- * There's no real data layer in this PR (see ADR-013) — every "load" just
- * resolves to [DemoData.snapshot].
+ * Root composable. Builds the live data-layer collaborators, hosts the
+ * [DashboardViewModel], and renders the screen for the current
+ * [DashboardState]. The whole app is driven off that single state machine
+ * (mirrors the iOS `DashboardView`).
  */
 @Composable
 fun TokenCounterApp() {
     TokenCounterTheme {
-        var state by remember { mutableStateOf<DashboardState>(DashboardState.NeedsCredentials) }
-        var connectedKey by remember { mutableStateOf<String?>(null) }
-        var showSettings by remember { mutableStateOf(false) }
-
-        fun loadDemo() {
-            val snapshot = DemoData.snapshot()
-            state = DashboardState.Loaded(snapshot.orgName, snapshot.report)
+        val context = LocalContext.current
+        val factory = remember(context) {
+            val app = context.applicationContext
+            DashboardViewModel.factory(
+                cost = LiveCostProvider(),
+                credentialStore = KeystoreCredentialStore.create(app),
+                cache = DataStoreReportCache.create(app),
+                demoMode = DataStoreDemoModeStore.create(app)
+            )
         }
+        val viewModel: DashboardViewModel = viewModel(factory = factory)
+
+        LaunchedEffect(Unit) { viewModel.bootstrap() }
+
+        val state by viewModel.state.collectAsState()
+        val isRefreshing by viewModel.isRefreshing.collectAsState()
+        val isDemo by viewModel.isDemo.collectAsState()
+        val maskedKey by viewModel.maskedKey.collectAsState()
+
+        val scope = rememberCoroutineScope()
+        var showSettings by remember { mutableStateOf(false) }
+        var isConnecting by remember { mutableStateOf(false) }
+        var submitError by remember { mutableStateOf<String?>(null) }
 
         when (val current = state) {
             is DashboardState.Loading -> LoadingScreen()
 
             is DashboardState.NeedsCredentials -> OnboardingScreen(
+                isConnecting = isConnecting,
+                submitError = submitError,
                 onConnect = { key ->
-                    // TODO(data-layer PR): gate on the real key — case-insensitive
-                    //   DemoData.REVIEW_KEY enters demo mode (mirroring the iOS
-                    //   isReviewKey() path); any other key hits the Admin API.
-                    //   For this UI-only milestone, any non-blank key loads the
-                    //   canned demo snapshot.
-                    connectedKey = key
-                    loadDemo()
+                    scope.launch {
+                        isConnecting = true
+                        submitError = null
+                        val result = viewModel.connect(key)
+                        isConnecting = false
+                        if (result is ConnectResult.Failure) submitError = result.message
+                    }
                 }
             )
 
             is DashboardState.Loaded -> DashboardScreen(
                 orgName = current.orgName,
                 report = current.report,
-                isDemo = true,
-                isRefreshing = false,
-                onRefresh = { loadDemo() },
+                isDemo = isDemo,
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.refresh() },
                 onOpenSettings = { showSettings = true }
             )
 
-            is DashboardState.Failed -> DashboardScreen(
-                // TODO(data-layer PR): build the real error view (iOS shows an
-                //   exclamation-triangle, message, and Retry/Disconnect). This
-                //   state is unreachable in the UI-only port — there's no
-                //   network to fail — so we fall back to the loaded demo view.
-                orgName = "",
-                report = DemoData.snapshot().report,
-                isDemo = true,
-                isRefreshing = false,
-                onRefresh = { loadDemo() },
-                onOpenSettings = { showSettings = true }
+            is DashboardState.Failed -> ErrorView(
+                message = current.message,
+                onRetry = { viewModel.refresh() },
+                onDisconnect = { viewModel.disconnect() }
             )
         }
 
-        if (showSettings) {
+        if (showSettings && state is DashboardState.Loaded) {
             SettingsSheet(
-                orgName = (state as? DashboardState.Loaded)?.orgName ?: "Personal",
-                maskedKey = maskKey(connectedKey),
+                orgName = (state as DashboardState.Loaded).orgName,
+                maskedKey = maskedKey ?: "—",
                 appVersion = APP_VERSION,
                 onDisconnect = {
                     showSettings = false
-                    connectedKey = null
-                    state = DashboardState.NeedsCredentials
+                    viewModel.disconnect()
                 },
                 onDismiss = { showSettings = false }
             )
@@ -103,8 +118,7 @@ fun TokenCounterApp() {
 @Composable
 private fun LoadingScreen() {
     Box(
-        modifier = Modifier
-            .fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         CircularProgressIndicator(
@@ -112,11 +126,4 @@ private fun LoadingScreen() {
             color = MaterialTheme.colorScheme.primary
         )
     }
-}
-
-/** "sk-ant-admin01-abcd…wxyz" → "sk-ant-a…wxyz". Null/short keys mask fully. */
-private fun maskKey(key: String?): String {
-    if (key.isNullOrBlank()) return "—"
-    if (key.length <= 12) return "•".repeat(key.length)
-    return key.take(8) + "…" + key.takeLast(4)
 }
