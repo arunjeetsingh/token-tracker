@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -48,6 +49,11 @@ import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 
 private const val ADMIN_KEYS_URL = "https://console.anthropic.com/settings/admin-keys"
 private const val ORG_URL = "https://console.anthropic.com/settings/organization"
+
+/** Stable identifiers for UI tests (text fields are awkward to target by text). */
+object OnboardingTestTags {
+    const val KEY_FIELD = "onboarding_key_field"
+}
 
 /**
  * One-time setup flow. Kotlin sibling of the iOS `OnboardingView`.
@@ -158,7 +164,9 @@ fun OnboardingScreen(
                         Text(if (showKey) "Hide" else "Show")
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(OnboardingTestTags.KEY_FIELD)
             )
             if (submitError != null) {
                 Text(
