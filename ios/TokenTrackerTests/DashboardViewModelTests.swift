@@ -192,6 +192,31 @@ final class DashboardViewModelTests: XCTestCase {
         }
     }
 
+    func testConnect_authFailsOnCostFetchAfterSave_wipesKeyAndReOnboards() async {
+        // whoami succeeds (so the key is saved), then the month-to-date cost
+        // fetch is rejected with a 401 — the key was revoked or lacked scope
+        // between the two calls. The rejected key must not linger in the
+        // Keychain behind a generic dashboard error: we wipe it and route back
+        // to onboarding. Mirrors the Android regression in PR #56.
+        let cost = MockCostProvider(
+            whoami: .success(org("Acme")),
+            cost: .failure(TestFixtures.httpError(401))
+        )
+        let keychain = MockCredentialStore()
+        let cache = MockReportCache()
+        let vm = makeVM(cost: cost, keychain: keychain, cache: cache)
+
+        let result = await vm.connect(using: validKey)
+
+        XCTAssertTrue(isFailure(result), "a rejected cost fetch must surface as a connect failure")
+        XCTAssertEqual(vm.state, .needsCredentials)
+        XCTAssertEqual(cost.costCount, 1, "cost fetch ran after whoami auth'd")
+        XCTAssertEqual(keychain.deleteCount, 1, "the rejected key is wiped, not left behind")
+        XCTAssertNil(keychain.stored)
+        XCTAssertEqual(cache.clearCount, 1, "the cache is wiped with the token")
+        XCTAssertNil(vm.maskedKey)
+    }
+
     // MARK: - refresh
 
     func testRefresh_noStoredKey_goesToNeedsCredentials() async {

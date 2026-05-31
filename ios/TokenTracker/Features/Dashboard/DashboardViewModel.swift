@@ -112,12 +112,23 @@ final class DashboardViewModel: ObservableObject {
             DemoMode.isPersistedActive = false
             try keychain.save(trimmed)
             maskedKey = AnthropicKeyValidation.masked(trimmed)
-            // Now fetch cost. If this fails the key is still saved (it auth'd) —
-            // we surface the error in the dashboard state, not back to onboarding.
+            // Now fetch cost. A *transient* failure here keeps the saved key
+            // (it auth'd) and surfaces in the dashboard state. But a 401/403
+            // means the key was rejected after all (revoked, or insufficient
+            // scope, between whoami and this call) — honor the documented
+            // "401/403 → wipe key + re-onboard" contract instead of stranding a
+            // dead key in the Keychain behind a generic dashboard error. Mirrors
+            // the auth branch in refresh(using:).
             do {
                 let report = try await cost.monthToDateCost(apiKey: trimmed)
                 cache.save(report: report, orgName: identity.name)
                 state = .loaded(report: report, orgName: identity.name)
+            } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
+                try? keychain.delete()
+                cache.clear()
+                maskedKey = nil
+                state = .needsCredentials
+                return .failure(ConnectError(message: "Anthropic rejected this key. Double-check you copied an Admin key (starts with sk-ant-admin01-…) and try again."))
             } catch {
                 state = .failed(message: error.localizedDescription)
             }
