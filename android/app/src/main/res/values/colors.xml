@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Adaptive-icon background. Dark navy matching the iOS app-icon art so
+         the masked corners blend with the foreground's own dark field. -->
+    <color name="ic_launcher_background">#12141A</color>
     <!-- Always-dark launch background, matches the iOS launch screen (#12141A). -->
     <color name="splash_background">#12141A</color>
 </resources>
