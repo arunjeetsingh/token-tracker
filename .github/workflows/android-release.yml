@@ -3,10 +3,10 @@ name: Android release AAB
 # Manual trigger for now. Bumps the patch component of tokencounter.versionName
 # in android/gradle.properties, commits the bump back to main with [skip ci]
 # FIRST, then builds a signed release App Bundle (.aab) from that committed
-# version and uploads it as a build artifact. Committing before building keeps
-# release artifacts one-to-one with committed versions. Mirrors the iOS
-# TestFlight MARKETING_VERSION flow. Play Store upload can be wired later via a
-# service-account JSON once the app exists in Play Console.
+# version, uploads it as a build artifact, and (optionally) publishes it to the
+# Google Play internal testing track via the play-publisher service account.
+# Committing before building keeps release artifacts one-to-one with committed
+# versions. Mirrors the iOS TestFlight MARKETING_VERSION flow.
 on:
   workflow_dispatch:
     inputs:
@@ -14,6 +14,21 @@ on:
         description: "Release notes (optional)"
         required: false
         default: "Automated CI build"
+      track:
+        description: "Play track to publish to"
+        required: false
+        default: "internal"
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+      publish_to_play:
+        description: "Upload the AAB to Google Play"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -88,9 +103,9 @@ jobs:
         working-directory: android
         env:
           ANDROID_KEYSTORE_FILE: upload-keystore.jks
-          ANDROID_KEYSTORE_PASSWORD: *** secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: *** secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew :app:bundleRelease --stacktrace
 
       - name: Clean up keystore
@@ -104,3 +119,22 @@ jobs:
           name: tokencounter-release-${{ steps.bump.outputs.version }}
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+
+      # Publish to Google Play. The service account (play-publisher@...) needs
+      # "Release to testing tracks" permission on the app in Play Console.
+      # Note: the very FIRST release on a track must be created manually in the
+      # Play Console (to accept Play App Signing + complete required
+      # declarations). After that, this step automates subsequent uploads.
+      # status: completed = full rollout to the track's testers. Use draft if
+      # you'd rather review in the Console before releasing.
+      - name: Publish to Google Play (${{ github.event.inputs.track }})
+        if: ${{ github.event.inputs.publish_to_play == 'true' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: studio.maximumimpact.tokencounter
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ github.event.inputs.track }}
+          status: completed
+          releaseName: ${{ steps.bump.outputs.version }}
+          changesNotSentForReview: false
