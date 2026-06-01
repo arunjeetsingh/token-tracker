@@ -1,5 +1,8 @@
 package studio.maximumimpact.tokencounter.features.dashboard
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,21 +33,41 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import studio.maximumimpact.tokencounter.core.DemoData
+import studio.maximumimpact.tokencounter.core.Money
 import studio.maximumimpact.tokencounter.core.MtdCost
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.log10
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sin
 
 private val asOfFormatter: DateTimeFormatter =
     DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(Locale.US)
@@ -167,12 +190,7 @@ private fun DashboardContent(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text = report.total.formatted(),
-                style = MaterialTheme.typography.displayLarge.copy(fontFeatureSettings = "tnum"),
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center
-            )
+            AnimatedMoneyGauge(total = report.total, orgName = orgName)
             Text(
                 text = "Month to date · as of ${report.asOf.toLocalTime().format(asOfFormatter)}",
                 style = MaterialTheme.typography.bodySmall,
@@ -212,6 +230,116 @@ private fun DashboardContent(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
+}
+
+@Composable
+private fun AnimatedMoneyGauge(
+    total: Money,
+    orgName: String,
+    modifier: Modifier = Modifier
+) {
+    val restingProgress = remember(total.cents) { speedometerProgress(total) }
+    var needleTarget by remember { mutableFloatStateOf(restingProgress) }
+    val needleProgress by animateFloatAsState(
+        targetValue = needleTarget,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 260f),
+        label = "speedometerNeedle"
+    )
+
+    LaunchedEffect(total.cents) {
+        needleTarget = 0.96f
+        delay(240)
+        needleTarget = restingProgress
+    }
+
+    val primary = MaterialTheme.colorScheme.primary
+    val onBackground = MaterialTheme.colorScheme.onBackground
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val formatted = total.formatted()
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(154.dp)
+            .clearAndSetSemantics {
+                contentDescription = "Month to date, ${total.formatted()}, for $orgName"
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 9.dp.toPx()
+            val center = Offset(size.width / 2f, size.height - 12.dp.toPx())
+            val radius = min(size.width * 0.43f, size.height - 18.dp.toPx())
+            val arcSize = Size(radius * 2f, radius * 2f)
+            val arcTopLeft = Offset(center.x - radius, center.y - radius)
+            val sweep = 130f * needleProgress.coerceIn(0f, 1f)
+
+            drawArc(
+                color = muted.copy(alpha = 0.22f),
+                startAngle = 205f,
+                sweepAngle = 130f,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+            drawArc(
+                color = primary.copy(alpha = 0.86f),
+                startAngle = 205f,
+                sweepAngle = sweep,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+
+            val angle = Math.toRadians((205f + sweep).toDouble())
+            val tip = Offset(
+                x = center.x + cos(angle).toFloat() * radius * 0.78f,
+                y = center.y + sin(angle).toFloat() * radius * 0.78f
+            )
+            drawLine(
+                color = primary.copy(alpha = 0.68f),
+                start = center,
+                end = tip,
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawCircle(
+                color = primary.copy(alpha = 0.82f),
+                radius = 4.dp.toPx(),
+                center = center
+            )
+        }
+
+        Text(
+            text = formatted,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontFeatureSettings = "tnum",
+                fontSize = headlineFontSize(formatted)
+            ),
+            color = onBackground,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        )
+    }
+}
+
+private fun headlineFontSize(formatted: String): TextUnit = when {
+    formatted.length >= 17 -> 38.sp
+    formatted.length >= 14 -> 46.sp
+    formatted.length >= 12 -> 54.sp
+    else -> 57.sp
+}
+
+private fun speedometerProgress(total: Money): Float {
+    val dollars = max(0.0, total.dollars.toDouble())
+    val scaled = min(log10(dollars + 1.0) / 4.0, 1.0)
+    return (0.1 + scaled * 0.8).toFloat()
 }
 
 @Composable
