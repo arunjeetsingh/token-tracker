@@ -71,7 +71,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.tokentracker.TokenTrackerTests
         BUNDLE_LOADER: "$(TEST_HOST)"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TokenTracker.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TokenTracker"
-        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   TokenTracker:

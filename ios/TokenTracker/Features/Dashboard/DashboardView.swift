@@ -19,10 +19,7 @@ struct DashboardView: View {
                     }
                 }
         }
-        .task {
-            await viewModel.bootstrap()
-            await viewModel.autoRefreshLoop()
-        }
+        .task { await viewModel.bootstrap() }
         .sheet(isPresented: $showSettings) {
             SettingsView(
                 maskedKey: viewModel.maskedKey,
@@ -154,7 +151,10 @@ struct DashboardView: View {
                 Text(orgName)
                     .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
-                AnimatedMoneyGauge(total: report.total, orgName: orgName)
+                Text(report.total.formatted())
+                    .font(.system(size: 64, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .accessibilityLabel("Month to date, \(report.total.formatted()), for \(orgName)")
                 Text("Month to date · as of \(report.asOf, style: .time)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -210,125 +210,4 @@ struct DashboardView: View {
 
 #Preview {
     DashboardView()
-}
-
-private struct AnimatedMoneyGauge: View {
-    let total: Money
-    let orgName: String
-
-    @State private var needleProgress = 0.12
-
-    private var restingProgress: Double {
-        let dollars = max(0, Double(truncating: total.dollars as NSDecimalNumber))
-        let scaled = min(log10(dollars + 1) / 4.0, 1)
-        return 0.1 + (scaled * 0.8)
-    }
-
-    var body: some View {
-        ZStack {
-            SpeedometerArc(progress: 1)
-                .stroke(
-                    Color.secondary.opacity(0.22),
-                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
-                )
-            SpeedometerArc(progress: needleProgress)
-                .stroke(
-                    Color.accentColor.opacity(0.86),
-                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
-                )
-            SpeedometerNeedle(progress: needleProgress)
-                .stroke(
-                    Color.accentColor.opacity(0.68),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-            SpeedometerCap()
-                .fill(Color.accentColor.opacity(0.82))
-
-            Text(total.formatted())
-                .font(.system(size: 64, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .contentTransition(.numericText(value: Double(total.cents)))
-                .frame(maxWidth: 292)
-                .offset(y: 28)
-        }
-        .frame(width: 308, height: 154)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Month to date, \(total.formatted()), for \(orgName)")
-        .onAppear {
-            needleProgress = restingProgress
-        }
-        .onChange(of: total.cents) {
-            animateNeedleChange()
-        }
-    }
-
-    private func animateNeedleChange() {
-        let target = restingProgress
-        withAnimation(.easeOut(duration: 0.24)) {
-            needleProgress = 0.96
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 240_000_000)
-            withAnimation(.spring(response: 0.46, dampingFraction: 0.62)) {
-                needleProgress = target
-            }
-        }
-    }
-}
-
-private struct SpeedometerArc: Shape {
-    var progress: Double
-
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let radius = min(rect.width * 0.43, rect.height - 18)
-        let center = CGPoint(x: rect.midX, y: rect.maxY - 12)
-        let sweep = 130 * max(0, min(progress, 1))
-        var path = Path()
-        path.addArc(
-            center: center,
-            radius: radius,
-            startAngle: .degrees(205),
-            endAngle: .degrees(205 + sweep),
-            clockwise: false
-        )
-        return path
-    }
-}
-
-private struct SpeedometerNeedle: Shape {
-    var progress: Double
-
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let radius = min(rect.width * 0.43, rect.height - 18)
-        let center = CGPoint(x: rect.midX, y: rect.maxY - 12)
-        let angle = Angle.degrees(205 + (130 * max(0, min(progress, 1)))).radians
-        let tip = CGPoint(
-            x: center.x + CGFloat(cos(angle)) * radius * 0.78,
-            y: center.y + CGFloat(sin(angle)) * radius * 0.78
-        )
-        var path = Path()
-        path.move(to: center)
-        path.addLine(to: tip)
-        return path
-    }
-}
-
-private struct SpeedometerCap: Shape {
-    func path(in rect: CGRect) -> Path {
-        let center = CGPoint(x: rect.midX, y: rect.maxY - 12)
-        let cap = CGRect(x: center.x - 4, y: center.y - 4, width: 8, height: 8)
-        return Path(ellipseIn: cap)
-    }
 }
