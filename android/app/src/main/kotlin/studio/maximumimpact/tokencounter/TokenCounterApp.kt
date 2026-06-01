@@ -55,7 +55,10 @@ fun TokenCounterApp() {
         }
         val viewModel: DashboardViewModel = viewModel(factory = factory)
 
-        LaunchedEffect(Unit) { viewModel.bootstrap() }
+        LaunchedEffect(Unit) {
+            viewModel.bootstrap()
+            viewModel.startAutoRefresh()
+        }
 
         val state by viewModel.state.collectAsState()
         val isRefreshing by viewModel.isRefreshing.collectAsState()

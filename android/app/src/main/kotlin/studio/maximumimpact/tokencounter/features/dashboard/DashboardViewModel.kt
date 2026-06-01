@@ -5,8 +5,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +65,10 @@ class DashboardViewModel(
     private val _isDemo = MutableStateFlow(false)
     val isDemo: StateFlow<Boolean> = _isDemo.asStateFlow()
 
+    private var autoRefreshJob: Job? = null
+    private var refreshInFlight = false
+    private var dataSessionId = 0
+
     fun bootstrap() {
         viewModelScope.launch {
             if (demoMode.isActive()) {
@@ -82,6 +89,19 @@ class DashboardViewModel(
         }
     }
 
+    fun startAutoRefresh() {
+        if (autoRefreshJob?.isActive == true) return
+
+        autoRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(AUTO_REFRESH_INTERVAL_MS)
+                if (_state.value is DashboardState.Loaded) {
+                    refreshFromStoredCredential()
+                }
+            }
+        }
+    }
+
     /**
      * Verifies the key against the API *before* persisting it, so we never
      * store junk we'd have to surface as a generic failure next launch.
@@ -93,6 +113,7 @@ class DashboardViewModel(
         }
         // Review magic key: short-circuit before any network call or key write.
         if (DemoData.isReviewKey(trimmed)) {
+            dataSessionId += 1
             demoMode.setActive(true)
             loadDemo()
             return ConnectResult.Success
@@ -103,6 +124,7 @@ class DashboardViewModel(
             // Real key authenticated — leave demo mode and persist the key.
             demoMode.setActive(false)
             _isDemo.value = false
+            dataSessionId += 1
             credentialStore.save(trimmed)
             _maskedKey.value = AnthropicKeyValidation.masked(trimmed)
             // The cost fetch: whoami already auth'd, so a *transient* failure
@@ -135,22 +157,13 @@ class DashboardViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            if (demoMode.isActive()) {
-                loadDemo()
-                return@launch
-            }
-            val key = credentialStore.load()
-            if (key == null) {
-                _maskedKey.value = null
-                _state.value = DashboardState.NeedsCredentials
-                return@launch
-            }
-            refreshUsing(key)
+            refreshFromStoredCredential()
         }
     }
 
     fun disconnect() {
         viewModelScope.launch {
+            dataSessionId += 1
             demoMode.setActive(false)
             cache.clear()
             credentialStore.delete()
@@ -160,7 +173,26 @@ class DashboardViewModel(
         }
     }
 
+    private suspend fun refreshFromStoredCredential() {
+        if (demoMode.isActive()) {
+            loadDemo()
+            return
+        }
+        val key = credentialStore.load()
+        if (key == null) {
+            _maskedKey.value = null
+            _state.value = DashboardState.NeedsCredentials
+            dataSessionId += 1
+            return
+        }
+        refreshUsing(key)
+    }
+
     private suspend fun refreshUsing(key: String) {
+        if (refreshInFlight) return
+        refreshInFlight = true
+        val sessionId = dataSessionId
+
         val hasSomethingToShow = _state.value is DashboardState.Loaded
         if (hasSomethingToShow) {
             _isRefreshing.value = true
@@ -173,12 +205,14 @@ class DashboardViewModel(
                 val report = async { cost.monthToDateCost(key) }
                 val org = identity.await()
                 val mtd = report.await()
+                if (sessionId != dataSessionId) return@coroutineScope
                 _maskedKey.value = AnthropicKeyValidation.masked(key)
                 cache.save(mtd, org.name)
                 _isDemo.value = false
                 _state.value = DashboardState.Loaded(org.name, mtd)
             }
         } catch (e: Exception) {
+            if (sessionId != dataSessionId) return
             if (e.isAnthropicAuthError()) {
                 // Token went bad — wipe it (and the cache) and force re-onboarding.
                 wipeCredentialsAndReOnboard()
@@ -189,11 +223,13 @@ class DashboardViewModel(
             // else: keep the stale data on screen (user sees the "as of" time).
         } finally {
             _isRefreshing.value = false
+            refreshInFlight = false
         }
     }
 
     /** Clears the stored key, cache, and demo flag and returns to onboarding. */
     private suspend fun wipeCredentialsAndReOnboard() {
+        dataSessionId += 1
         credentialStore.delete()
         cache.clear()
         _isDemo.value = false
@@ -212,6 +248,7 @@ class DashboardViewModel(
         private const val REJECTED_KEY_MESSAGE =
             "Anthropic rejected this key. Double-check you copied an Admin key " +
                 "(starts with sk-ant-admin01-…) and try again."
+        private const val AUTO_REFRESH_INTERVAL_MS = 30_000L
 
         /** Builds a factory wiring the live collaborators from app dependencies. */
         fun factory(
