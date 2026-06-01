@@ -11,13 +11,23 @@ plugins {
 val appVersionName: String =
     (project.findProperty("tokencounter.versionName") as String?)?.trim().takeUnless { it.isNullOrEmpty() }
         ?: "0.1.0"
-// Derive a monotonic versionCode from semver: major*10000 + minor*100 + patch.
+// Derive a monotonic versionCode from semver: major*1_000_000 + minor*1_000 + patch.
+// Per-component cap: minor <= 999 and patch <= 999. The release workflow only
+// auto-increments patch, so this gives ~1000 patch releases per minor before a
+// minor bump is required; widen the radix again if that ceiling is ever neared.
+// (Play requires each uploaded versionCode to be unique and strictly greater
+// than the previous one.) Components are bounds-checked so an out-of-range value
+// fails the build loudly instead of silently colliding.
 val appVersionCode: Int = run {
     val parts = appVersionName.split(".")
     val major = parts.getOrNull(0)?.toIntOrNull() ?: 0
     val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
     val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
-    major * 10000 + minor * 100 + patch
+    require(minor in 0..999 && patch in 0..999) {
+        "versionName '$appVersionName' out of range: minor and patch must each be <= 999 " +
+            "to keep versionCode monotonic (major*1_000_000 + minor*1_000 + patch)."
+    }
+    major * 1_000_000 + minor * 1_000 + patch
 }
 
 // ---- Release signing ----

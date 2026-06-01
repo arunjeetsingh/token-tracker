@@ -1,11 +1,12 @@
 name: Android release AAB
 
-# Manual trigger for now. Builds a signed release App Bundle (.aab), bumps the
-# patch component of tokencounter.versionName in android/gradle.properties, and
-# commits the bump back to main with [skip ci] — mirrors the iOS TestFlight
-# MARKETING_VERSION flow. The signed .aab is uploaded as a build artifact; Play
-# Store upload can be wired later via a service-account JSON once the app
-# exists in Play Console.
+# Manual trigger for now. Bumps the patch component of tokencounter.versionName
+# in android/gradle.properties, commits the bump back to main with [skip ci]
+# FIRST, then builds a signed release App Bundle (.aab) from that committed
+# version and uploads it as a build artifact. Committing before building keeps
+# release artifacts one-to-one with committed versions. Mirrors the iOS
+# TestFlight MARKETING_VERSION flow. Play Store upload can be wired later via a
+# service-account JSON once the app exists in Play Console.
 on:
   workflow_dispatch:
     inputs:
@@ -16,6 +17,14 @@ on:
 
 permissions:
   contents: write
+
+# Serialize releases: only one release build at a time, and never cancel an
+# in-flight one (a cancelled run could leave a pushed version bump with no
+# matching artifact). Queued runs start after the prior run pushes its bump,
+# so each reads a distinct current version.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
 
 jobs:
   release-aab:
@@ -34,19 +43,38 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Bump patch version (tokencounter.versionName)
+      # Bump the patch version and push it to main BEFORE building, so the
+      # committed version is the single source of truth for the artifact below.
+      - name: Bump patch version and commit to main
         id: bump
         working-directory: android
         run: |
           set -euo pipefail
           CUR=$(grep -E '^tokencounter\.versionName=' gradle.properties | head -1 | sed -E 's/^tokencounter\.versionName=//')
           echo "Current version: $CUR"
+          # Require a 3-component semver (major.minor.patch).
+          if ! printf '%s' "$CUR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tokencounter.versionName must be 3-component semver (got '$CUR')"
+            exit 1
+          fi
           IFS='.' read -r MA MI PA <<< "$CUR"
           PA=$((PA + 1))
           NEW="${MA}.${MI}.${PA}"
           echo "New version: $NEW"
           sed -i -E "s/^(tokencounter\.versionName=).*/\1${NEW}/" gradle.properties
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore(android): bump versionName to $NEW [skip ci]"
+          # Rebase onto any concurrent advances to main, then push. Retry once
+          # in case main moved between rebase and push.
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && break
+            echo "Push attempt $attempt failed; retrying..."
+            sleep $((attempt * 5))
+          done
 
       - name: Decode upload keystore
         working-directory: android
@@ -55,16 +83,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > upload-keystore.jks
-          echo "ANDROID_KEYSTORE_FILE=upload-keystore.jks" >> "$GITHUB_ENV"
 
       - name: Build signed release AAB
         working-directory: android
         env:
           ANDROID_KEYSTORE_FILE: upload-keystore.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: *** secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_PASSWORD: *** secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew :app:bundleRelease --stacktrace
+
+      - name: Clean up keystore
+        if: always()
+        working-directory: android
+        run: rm -f upload-keystore.jks
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
@@ -72,27 +104,3 @@ jobs:
           name: tokencounter-release-${{ steps.bump.outputs.version }}
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
-
-      - name: Clean up keystore
-        if: always()
-        working-directory: android
-        run: rm -f upload-keystore.jks
-
-      - name: Commit version bump back to main
-        if: success()
-        run: |
-          set -euo pipefail
-          NEW="${{ steps.bump.outputs.version }}"
-          # Re-apply ONLY the version line on a clean checkout so the commit is
-          # a minimal one-line bump (discard keystore/build mutations).
-          git checkout -- android/gradle.properties
-          sed -i -E "s/^(tokencounter\.versionName=).*/\1${NEW}/" android/gradle.properties
-          if git diff --quiet -- android/gradle.properties; then
-            echo "No version change to commit."
-            exit 0
-          fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add android/gradle.properties
-          git commit -m "chore(android): bump versionName to $NEW [skip ci]"
-          git push origin HEAD:main
