@@ -5,11 +5,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,7 +63,6 @@ class DashboardViewModel(
     private val _isDemo = MutableStateFlow(false)
     val isDemo: StateFlow<Boolean> = _isDemo.asStateFlow()
 
-    private var autoRefreshJob: Job? = null
     private var refreshInFlight = false
     private var dataSessionId = 0
 
@@ -89,15 +86,11 @@ class DashboardViewModel(
         }
     }
 
-    fun startAutoRefresh() {
-        if (autoRefreshJob?.isActive == true) return
-
-        autoRefreshJob = viewModelScope.launch {
-            while (isActive) {
-                delay(AUTO_REFRESH_INTERVAL_MS)
-                if (_state.value is DashboardState.Loaded) {
-                    refreshFromStoredCredential()
-                }
+    suspend fun autoRefreshLoop() {
+        while (true) {
+            delay(AUTO_REFRESH_INTERVAL_MS)
+            if (_state.value is DashboardState.Loaded) {
+                refreshFromStoredCredential()
             }
         }
     }

@@ -7,16 +7,19 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import studio.maximumimpact.tokencounter.credentials.KeystoreCredentialStore
@@ -54,10 +57,15 @@ fun TokenCounterApp() {
             )
         }
         val viewModel: DashboardViewModel = viewModel(factory = factory)
+        val lifecycleOwner = LocalLifecycleOwner.current
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(viewModel) {
             viewModel.bootstrap()
-            viewModel.startAutoRefresh()
+        }
+        LaunchedEffect(lifecycleOwner, viewModel) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.autoRefreshLoop()
+            }
         }
 
         val state by viewModel.state.collectAsState()

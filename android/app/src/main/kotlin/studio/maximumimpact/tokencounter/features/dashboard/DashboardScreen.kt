@@ -1,9 +1,7 @@
 package studio.maximumimpact.tokencounter.features.dashboard
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +34,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,16 +47,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import studio.maximumimpact.tokencounter.core.DemoData
 import studio.maximumimpact.tokencounter.core.Money
@@ -67,7 +67,6 @@ import kotlin.math.cos
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToLong
 import kotlin.math.sin
 
 private val asOfFormatter: DateTimeFormatter =
@@ -246,11 +245,6 @@ private fun AnimatedMoneyGauge(
         animationSpec = spring(dampingRatio = 0.62f, stiffness = 260f),
         label = "speedometerNeedle"
     )
-    val animatedCents by animateFloatAsState(
-        targetValue = total.cents.toFloat(),
-        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
-        label = "headlineTotal"
-    )
 
     LaunchedEffect(total.cents) {
         needleTarget = 0.96f
@@ -261,13 +255,13 @@ private fun AnimatedMoneyGauge(
     val primary = MaterialTheme.colorScheme.primary
     val onBackground = MaterialTheme.colorScheme.onBackground
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val formatted = Money(animatedCents.roundToLong()).formatted()
+    val formatted = total.formatted()
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(154.dp)
-            .semantics {
+            .clearAndSetSemantics {
                 contentDescription = "Month to date, ${total.formatted()}, for $orgName"
             },
         contentAlignment = Alignment.Center
@@ -320,7 +314,10 @@ private fun AnimatedMoneyGauge(
 
         Text(
             text = formatted,
-            style = MaterialTheme.typography.displayLarge.copy(fontFeatureSettings = "tnum"),
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontFeatureSettings = "tnum",
+                fontSize = headlineFontSize(formatted)
+            ),
             color = onBackground,
             textAlign = TextAlign.Center,
             maxLines = 1,
@@ -330,6 +327,13 @@ private fun AnimatedMoneyGauge(
                 .padding(bottom = 8.dp)
         )
     }
+}
+
+private fun headlineFontSize(formatted: String): TextUnit = when {
+    formatted.length >= 17 -> 38.sp
+    formatted.length >= 14 -> 46.sp
+    formatted.length >= 12 -> 54.sp
+    else -> 57.sp
 }
 
 private fun speedometerProgress(total: Money): Float {
