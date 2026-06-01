@@ -1,6 +1,5 @@
 package studio.maximumimpact.tokencounter.features.dashboard
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -32,23 +31,12 @@ private class FakeCostProvider(
     var whoamiError: Throwable? = null,
     var reportError: Throwable? = null
 ) : CostProvider {
-    var whoamiCount = 0
-        private set
-    var reportCount = 0
-        private set
-    var reportStarted: CompletableDeferred<Unit>? = null
-    var reportGate: CompletableDeferred<Unit>? = null
-
     override suspend fun whoami(apiKey: String): OrgIdentity {
-        whoamiCount += 1
         whoamiError?.let { throw it }
         return org
     }
 
     override suspend fun monthToDateCost(apiKey: String): MtdCost {
-        reportCount += 1
-        reportStarted?.complete(Unit)
-        reportGate?.await()
         reportError?.let { throw it }
         return report ?: error("no report configured")
     }
@@ -195,67 +183,6 @@ class DashboardViewModelTest {
         assertEquals(DashboardState.NeedsCredentials, vm.state.value)
         assertNull(creds.stored)
         assertNull(cache.cached)
-    }
-
-    @Test
-    fun refresh_inFlight_dropsOverlappingRefresh() = runTest(dispatcher) {
-        creds.stored = "sk-ant-admin01-stored"
-        val vm = viewModel()
-        vm.bootstrap()
-        advanceUntilIdle()
-        assertEquals(1, cost.reportCount)
-
-        val reportStarted = CompletableDeferred<Unit>()
-        val reportGate = CompletableDeferred<Unit>()
-        cost.reportStarted = reportStarted
-        cost.reportGate = reportGate
-
-        vm.refresh()
-        advanceUntilIdle()
-        reportStarted.await()
-        assertTrue(vm.isRefreshing.value)
-        assertEquals(2, cost.reportCount)
-
-        vm.refresh()
-        advanceUntilIdle()
-        assertEquals("second refresh should be ignored while the first is in flight", 2, cost.reportCount)
-
-        reportGate.complete(Unit)
-        advanceUntilIdle()
-        assertFalse(vm.isRefreshing.value)
-        assertEquals(2, cost.reportCount)
-    }
-
-    @Test
-    fun refresh_lateCompletionAfterDisconnectDoesNotRepaintDashboard() = runTest(dispatcher) {
-        creds.stored = "sk-ant-admin01-stored"
-        val vm = viewModel()
-        vm.bootstrap()
-        advanceUntilIdle()
-        assertTrue(vm.state.value is DashboardState.Loaded)
-
-        val reportStarted = CompletableDeferred<Unit>()
-        val reportGate = CompletableDeferred<Unit>()
-        cost.org = OrgIdentity("org_late", "organization", "Late Org")
-        cost.reportStarted = reportStarted
-        cost.reportGate = reportGate
-
-        vm.refresh()
-        advanceUntilIdle()
-        reportStarted.await()
-        assertTrue(vm.isRefreshing.value)
-
-        vm.disconnect()
-        advanceUntilIdle()
-        assertEquals(DashboardState.NeedsCredentials, vm.state.value)
-        assertNull(creds.stored)
-        assertNull(cache.cached)
-
-        reportGate.complete(Unit)
-        advanceUntilIdle()
-        assertEquals(DashboardState.NeedsCredentials, vm.state.value)
-        assertNull(cache.cached)
-        assertFalse(vm.isRefreshing.value)
     }
 
     @Test

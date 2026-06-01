@@ -16,9 +16,6 @@ final class DashboardViewModel: ObservableObject {
     /// masked rendering without re-reading the Keychain. Reset on disconnect.
     @Published private(set) var maskedKey: String?
 
-    private var refreshInFlight = false
-    private var dataSessionID = 0
-
     /// Errors surfaced via the onboarding flow (e.g. auth failure on save).
     struct ConnectError: LocalizedError {
         let message: String
@@ -85,19 +82,6 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
-    func autoRefreshLoop() async {
-        while !Task.isCancelled {
-            do {
-                try await Task.sleep(nanoseconds: Self.autoRefreshIntervalNanoseconds)
-            } catch {
-                return
-            }
-
-            guard state.isLoaded else { continue }
-            await refresh()
-        }
-    }
-
     /// Used by the onboarding view. Verifies the key against the API *before*
     /// committing to the Keychain so we don't store junk that we'll then have
     /// to surface as a generic failure on the next launch.
@@ -109,7 +93,6 @@ final class DashboardViewModel: ObservableObject {
         // App Reviewer demo magic key: short-circuit before any network call
         // or Keychain write. Persist the flag so demo mode survives relaunch.
         if DemoMode.isReviewKey(trimmed) {
-            dataSessionID += 1
             DemoMode.isPersistedActive = true
             let demo = DemoMode.snapshot()
             maskedKey = AnthropicKeyValidation.masked(trimmed)
@@ -127,7 +110,6 @@ final class DashboardViewModel: ObservableObject {
             // 401/403 failures are handled in the catch branch below and
             // intentionally leave the flag alone.)
             DemoMode.isPersistedActive = false
-            dataSessionID += 1
             try keychain.save(trimmed)
             maskedKey = AnthropicKeyValidation.masked(trimmed)
             // Now fetch cost. A *transient* failure here keeps the saved key
@@ -144,7 +126,6 @@ final class DashboardViewModel: ObservableObject {
             } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
                 try? keychain.delete()
                 cache.clear()
-                dataSessionID += 1
                 maskedKey = nil
                 state = .needsCredentials
                 return .failure(ConnectError(message: "Anthropic rejected this key. Double-check you copied an Admin key (starts with sk-ant-admin01-…) and try again."))
@@ -175,7 +156,6 @@ final class DashboardViewModel: ObservableObject {
             guard let key = try keychain.load() else {
                 state = .needsCredentials
                 maskedKey = nil
-                dataSessionID += 1
                 return
             }
             await refresh(using: key)
@@ -190,7 +170,6 @@ final class DashboardViewModel: ObservableObject {
         // the user toggled between real and demo over the lifetime of the
         // install — it's a no-op when nothing's stored.
         DemoMode.isPersistedActive = false
-        dataSessionID += 1
         // Drop the cached snapshot too so a fresh connection (potentially a
         // different Anthropic org) doesn't briefly flash the previous owner's
         // data while it loads.
@@ -207,11 +186,6 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func refresh(using key: String) async {
-        guard !refreshInFlight else { return }
-        refreshInFlight = true
-        defer { refreshInFlight = false }
-        let sessionID = dataSessionID
-
         // If we already have data on screen (cached snapshot from bootstrap,
         // or a previously-loaded report from a manual refresh), keep it
         // visible and just surface the refresh indicator in the toolbar.
@@ -230,20 +204,16 @@ final class DashboardViewModel: ObservableObject {
             async let identity = cost.whoami(apiKey: key)
             async let report = cost.monthToDateCost(apiKey: key)
             let (orgID, mtd) = try await (identity, report)
-            guard sessionID == dataSessionID else { return }
             maskedKey = AnthropicKeyValidation.masked(key)
             cache.save(report: mtd, orgName: orgID.name)
             state = .loaded(report: mtd, orgName: orgID.name)
         } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
-            guard sessionID == dataSessionID else { return }
             // Token went bad — wipe it (and the cache) and force re-onboarding.
             try? keychain.delete()
             cache.clear()
-            dataSessionID += 1
             maskedKey = nil
             state = .needsCredentials
         } catch {
-            guard sessionID == dataSessionID else { return }
             // Network / transient failure: if we have cached data on screen,
             // leave it there. The user can see the staleness via the report's
             // `asOf` timestamp and the cleared refresh indicator. Only
@@ -253,6 +223,4 @@ final class DashboardViewModel: ObservableObject {
             }
         }
     }
-
-    private static let autoRefreshIntervalNanoseconds: UInt64 = 30_000_000_000
 }
