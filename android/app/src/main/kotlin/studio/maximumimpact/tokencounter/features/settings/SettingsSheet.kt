@@ -31,9 +31,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import studio.maximumimpact.tokencounter.core.Money
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 
 private const val ADMIN_KEYS_URL = "https://console.anthropic.com/settings/admin-keys"
+private const val LIMITS_URL = "https://platform.claude.com/settings/limits"
+private const val BILLING_URL = "https://platform.claude.com/settings/billing"
 
 /**
  * Settings modal. Kotlin sibling of the iOS `SettingsView` (presented as a
@@ -46,6 +49,8 @@ fun SettingsSheet(
     orgName: String,
     maskedKey: String,
     appVersion: String,
+    spendLimitCents: Long?,
+    onEditLimit: () -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -75,6 +80,41 @@ fun SettingsSheet(
             SettingsSection(title = "ANTHROPIC ADMIN KEY") {
                 LabeledRow(label = "Organization", value = orgName)
                 LabeledRow(label = "Admin key", value = maskedKey, monospace = true)
+            }
+
+            // Spend limit (local tracking target).
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SettingsSection(title = "SPEND LIMIT") {
+                    ActionRow(
+                        label = "Monthly limit",
+                        value = spendLimitCents?.let { Money(it).formatted() } ?: "Not set",
+                        onClick = onEditLimit
+                    )
+                    ActionRow(label = "Change limit in Console", isLink = true) {
+                        uriHandler.openUri(LIMITS_URL)
+                    }
+                }
+                Text(
+                    text = "Tracked on this device. Editing here doesn't change your actual " +
+                        "Anthropic spend limit — do that in the Console.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Billing (Console-only — not exposed by the API).
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SettingsSection(title = "BILLING") {
+                    ActionRow(label = "Credit balance & auto-reload", isLink = true) {
+                        uriHandler.openUri(BILLING_URL)
+                    }
+                }
+                Text(
+                    text = "Credit balance and auto-reload live in the Anthropic Console; " +
+                        "the API doesn't expose them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             // Destructive section.
@@ -161,6 +201,36 @@ private fun SettingsSection(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             content()
+        }
+    }
+}
+
+@Composable
+private fun ActionRow(
+    label: String,
+    value: String? = null,
+    isLink: Boolean = false,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (isLink) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
+        )
+        if (value != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

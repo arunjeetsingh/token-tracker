@@ -8,14 +8,17 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import studio.maximumimpact.tokencounter.core.DemoData
 import studio.maximumimpact.tokencounter.credentials.AnthropicKeyValidation
 import studio.maximumimpact.tokencounter.credentials.CredentialStore
 import studio.maximumimpact.tokencounter.data.DemoModeStore
 import studio.maximumimpact.tokencounter.data.ReportCache
+import studio.maximumimpact.tokencounter.data.SpendLimitStore
 import studio.maximumimpact.tokencounter.providers.CostProvider
 import studio.maximumimpact.tokencounter.providers.anthropic.isAnthropicAuthError
 
@@ -44,7 +47,8 @@ class DashboardViewModel(
     private val cost: CostProvider,
     private val credentialStore: CredentialStore,
     private val cache: ReportCache,
-    private val demoMode: DemoModeStore
+    private val demoMode: DemoModeStore,
+    private val spendLimitStore: SpendLimitStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<DashboardState>(DashboardState.Loading)
@@ -61,6 +65,18 @@ class DashboardViewModel(
     /** Whether the canned demo data (review-key path) is being shown. */
     private val _isDemo = MutableStateFlow(false)
     val isDemo: StateFlow<Boolean> = _isDemo.asStateFlow()
+
+    /**
+     * The user's on-device monthly spend limit in cents (null = unset). Local
+     * tracking target only — see [SpendLimitStore].
+     */
+    val spendLimitCents: StateFlow<Long?> =
+        spendLimitStore.limitCents.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Persist (or clear, when null) the local spend-limit target. */
+    fun setSpendLimit(cents: Long?) {
+        viewModelScope.launch { spendLimitStore.setLimitCents(cents) }
+    }
 
     fun bootstrap() {
         viewModelScope.launch {
@@ -218,9 +234,10 @@ class DashboardViewModel(
             cost: CostProvider,
             credentialStore: CredentialStore,
             cache: ReportCache,
-            demoMode: DemoModeStore
+            demoMode: DemoModeStore,
+            spendLimitStore: SpendLimitStore
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { DashboardViewModel(cost, credentialStore, cache, demoMode) }
+            initializer { DashboardViewModel(cost, credentialStore, cache, demoMode, spendLimitStore) }
         }
     }
 }

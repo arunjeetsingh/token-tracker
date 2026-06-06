@@ -1,6 +1,8 @@
 package studio.maximumimpact.tokencounter.features.dashboard
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -22,6 +24,7 @@ import studio.maximumimpact.tokencounter.credentials.CredentialStore
 import studio.maximumimpact.tokencounter.data.CachedReport
 import studio.maximumimpact.tokencounter.data.DemoModeStore
 import studio.maximumimpact.tokencounter.data.ReportCache
+import studio.maximumimpact.tokencounter.data.SpendLimitStore
 import studio.maximumimpact.tokencounter.providers.CostProvider
 import studio.maximumimpact.tokencounter.providers.anthropic.OrgIdentity
 
@@ -59,6 +62,12 @@ private class FakeDemoModeStore(var active: Boolean = false) : DemoModeStore {
     override suspend fun setActive(active: Boolean) { this.active = active }
 }
 
+private class FakeSpendLimitStore(initial: Long? = null) : SpendLimitStore {
+    private val flow = MutableStateFlow(initial)
+    override val limitCents: Flow<Long?> = flow
+    override suspend fun setLimitCents(cents: Long?) { flow.value = cents }
+}
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DashboardViewModelTest {
 
@@ -69,6 +78,7 @@ class DashboardViewModelTest {
     private lateinit var creds: FakeCredentialStore
     private lateinit var cache: FakeReportCache
     private lateinit var demo: FakeDemoModeStore
+    private lateinit var spendLimit: FakeSpendLimitStore
 
     @Before
     fun setUp() {
@@ -77,6 +87,7 @@ class DashboardViewModelTest {
         creds = FakeCredentialStore()
         cache = FakeReportCache()
         demo = FakeDemoModeStore()
+        spendLimit = FakeSpendLimitStore()
     }
 
     @After
@@ -84,7 +95,7 @@ class DashboardViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel() = DashboardViewModel(cost, creds, cache, demo)
+    private fun viewModel() = DashboardViewModel(cost, creds, cache, demo, spendLimit)
 
     private fun authError(): HttpException =
         HttpException(Response.error<Any>(401, "".toResponseBody(null)))
@@ -183,6 +194,21 @@ class DashboardViewModelTest {
         assertEquals(DashboardState.NeedsCredentials, vm.state.value)
         assertNull(creds.stored)
         assertNull(cache.cached)
+    }
+
+    @Test
+    fun setSpendLimit_persistsAndClears() = runTest(dispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertNull(vm.spendLimitCents.value)
+
+        vm.setSpendLimit(140_000)
+        advanceUntilIdle()
+        assertEquals(140_000L, vm.spendLimitCents.value)
+
+        vm.setSpendLimit(null)
+        advanceUntilIdle()
+        assertNull(vm.spendLimitCents.value)
     }
 
     @Test
