@@ -1,5 +1,10 @@
 package studio.maximumimpact.tokencounter.features.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +19,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -25,12 +31,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import studio.maximumimpact.tokencounter.core.Money
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 
@@ -50,13 +58,40 @@ fun SettingsSheet(
     maskedKey: String,
     appVersion: String,
     spendLimitCents: Long?,
+    alertEnabled: Boolean,
     onEditLimit: () -> Unit,
+    onAlertEnabledChange: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     var showConfirm by remember { mutableStateOf(false) }
+
+    val limitSet = spendLimitCents != null
+
+    // POST_NOTIFICATIONS is requested only when the user turns alerts on.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) onAlertEnabledChange(true) }
+
+    val onToggleAlert: (Boolean) -> Unit = onToggle@{ wantOn ->
+        if (!wantOn) {
+            onAlertEnabledChange(false)
+            return@onToggle
+        }
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            onAlertEnabledChange(true)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -90,13 +125,24 @@ fun SettingsSheet(
                         value = spendLimitCents?.let { Money(it).formatted() } ?: "Not set",
                         onClick = onEditLimit
                     )
+                    SwitchRow(
+                        label = "Alert me at 90% of limit",
+                        checked = alertEnabled,
+                        enabled = limitSet,
+                        onCheckedChange = onToggleAlert
+                    )
                     ActionRow(label = "Change limit in Console", isLink = true) {
                         uriHandler.openUri(LIMITS_URL)
                     }
                 }
                 Text(
-                    text = "Tracked on this device. Editing here doesn't change your actual " +
-                        "Anthropic spend limit — do that in the Console.",
+                    text = if (limitSet) {
+                        "Limit is tracked on this device — editing here doesn't change your " +
+                            "actual Anthropic limit (do that in the Console). Alerts check in the " +
+                            "background and notify you once when spend reaches 90%."
+                    } else {
+                        "Set a monthly limit to track your spend and enable 90% alerts."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -202,6 +248,37 @@ private fun SettingsSection(
         ) {
             content()
         }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp, horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
     }
 }
 

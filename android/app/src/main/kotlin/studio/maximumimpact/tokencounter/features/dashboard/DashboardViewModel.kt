@@ -17,6 +17,7 @@ import studio.maximumimpact.tokencounter.core.DemoData
 import studio.maximumimpact.tokencounter.credentials.AnthropicKeyValidation
 import studio.maximumimpact.tokencounter.credentials.CredentialStore
 import studio.maximumimpact.tokencounter.data.DemoModeStore
+import studio.maximumimpact.tokencounter.data.NotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.ReportCache
 import studio.maximumimpact.tokencounter.data.SpendLimitStore
 import studio.maximumimpact.tokencounter.providers.CostProvider
@@ -48,7 +49,8 @@ class DashboardViewModel(
     private val credentialStore: CredentialStore,
     private val cache: ReportCache,
     private val demoMode: DemoModeStore,
-    private val spendLimitStore: SpendLimitStore
+    private val spendLimitStore: SpendLimitStore,
+    private val notificationPrefs: NotificationPrefsStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<DashboardState>(DashboardState.Loading)
@@ -76,6 +78,19 @@ class DashboardViewModel(
     /** Persist (or clear, when null) the local spend-limit target. */
     fun setSpendLimit(cents: Long?) {
         viewModelScope.launch { spendLimitStore.setLimitCents(cents) }
+    }
+
+    /** Whether the user opted into the "90% of limit" spend alert. */
+    val alertEnabled: StateFlow<Boolean> =
+        notificationPrefs.alertEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /**
+     * Persist the spend-alert opt-in. The UI only calls this with `true` after
+     * notification permission is granted; scheduling the background check is
+     * driven off this flag by the host.
+     */
+    fun setAlertEnabled(enabled: Boolean) {
+        viewModelScope.launch { notificationPrefs.setAlertEnabled(enabled) }
     }
 
     fun bootstrap() {
@@ -235,9 +250,12 @@ class DashboardViewModel(
             credentialStore: CredentialStore,
             cache: ReportCache,
             demoMode: DemoModeStore,
-            spendLimitStore: SpendLimitStore
+            spendLimitStore: SpendLimitStore,
+            notificationPrefs: NotificationPrefsStore
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { DashboardViewModel(cost, credentialStore, cache, demoMode, spendLimitStore) }
+            initializer {
+                DashboardViewModel(cost, credentialStore, cache, demoMode, spendLimitStore, notificationPrefs)
+            }
         }
     }
 }
