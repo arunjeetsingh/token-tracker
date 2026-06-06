@@ -16,6 +16,13 @@ final class DashboardViewModel: ObservableObject {
     /// masked rendering without re-reading the Keychain. Reset on disconnect.
     @Published private(set) var maskedKey: String?
 
+    /// User's on-device monthly spend-limit target in cents (nil = unset).
+    /// Local tracking value only — the Admin API can't read/set the real limit.
+    @Published private(set) var spendLimitCents: Int64?
+
+    /// Whether the user opted into the "90% of limit" spend alert.
+    @Published private(set) var spendAlertEnabled: Bool
+
     /// Errors surfaced via the onboarding flow (e.g. auth failure on save).
     struct ConnectError: LocalizedError {
         let message: String
@@ -27,18 +34,40 @@ final class DashboardViewModel: ObservableObject {
     private let cost: CostProviding
     private let keychain: CredentialStoring
     private let cache: ReportCaching
+    private var spendLimits: SpendLimitStoring
+    private var notificationPrefs: NotificationPreferenceStoring
 
     /// Production callers use the zero-arg form, which wires up the live
-    /// Anthropic API, Keychain, and `UserDefaults` cache. Tests inject mocks
+    /// Anthropic API, Keychain, and `UserDefaults` stores. Tests inject mocks
     /// for each collaborator to exercise the state machine in isolation.
     init(
         cost: CostProviding = LiveCostProvider(),
         keychain: CredentialStoring = LiveCredentialStore(),
-        cache: ReportCaching = LiveReportCache()
+        cache: ReportCaching = LiveReportCache(),
+        spendLimits: SpendLimitStoring = LiveSpendLimitStore(),
+        notificationPrefs: NotificationPreferenceStoring = LiveNotificationPrefs()
     ) {
         self.cost = cost
         self.keychain = keychain
         self.cache = cache
+        self.spendLimits = spendLimits
+        self.notificationPrefs = notificationPrefs
+        self.spendLimitCents = spendLimits.limitCents
+        self.spendAlertEnabled = notificationPrefs.alertEnabled
+    }
+
+    /// Persist (or clear, when nil) the local spend-limit target.
+    func setSpendLimit(_ cents: Int64?) {
+        spendLimits.limitCents = cents
+        spendLimitCents = cents
+    }
+
+    /// Persist the spend-alert opt-in. The view layer requests notification
+    /// permission (and schedules the background check) before calling this with
+    /// `true`.
+    func setSpendAlertEnabled(_ enabled: Bool) {
+        notificationPrefs.alertEnabled = enabled
+        spendAlertEnabled = enabled
     }
 
     func bootstrap() async {

@@ -317,9 +317,47 @@ final class DashboardViewModelTests: XCTestCase {
     private func makeVM(
         cost: MockCostProvider = MockCostProvider(),
         keychain: MockCredentialStore = MockCredentialStore(),
-        cache: MockReportCache = MockReportCache()
+        cache: MockReportCache = MockReportCache(),
+        spendLimits: SpendLimitStoring = MockSpendLimitStore(),
+        notificationPrefs: NotificationPreferenceStoring = MockNotificationPrefs()
     ) -> DashboardViewModel {
-        DashboardViewModel(cost: cost, keychain: keychain, cache: cache)
+        DashboardViewModel(
+            cost: cost,
+            keychain: keychain,
+            cache: cache,
+            spendLimits: spendLimits,
+            notificationPrefs: notificationPrefs
+        )
+    }
+
+    // MARK: - spend limit + alert opt-in
+
+    func testSetSpendLimit_persistsAndClears() {
+        let store = MockSpendLimitStore()
+        let vm = makeVM(spendLimits: store)
+
+        XCTAssertNil(vm.spendLimitCents)
+        vm.setSpendLimit(140_000)
+        XCTAssertEqual(vm.spendLimitCents, 140_000)
+        XCTAssertEqual(store.limitCents, 140_000)
+
+        vm.setSpendLimit(nil)
+        XCTAssertNil(vm.spendLimitCents)
+        XCTAssertNil(store.limitCents)
+    }
+
+    func testSetSpendAlertEnabled_persists() {
+        let prefs = MockNotificationPrefs()
+        let vm = makeVM(notificationPrefs: prefs)
+
+        XCTAssertFalse(vm.spendAlertEnabled)
+        vm.setSpendAlertEnabled(true)
+        XCTAssertTrue(vm.spendAlertEnabled)
+        XCTAssertTrue(prefs.alertEnabled)
+
+        vm.setSpendAlertEnabled(false)
+        XCTAssertFalse(vm.spendAlertEnabled)
+        XCTAssertFalse(prefs.alertEnabled)
     }
 
     private func org(_ name: String) -> AnthropicAPI.OrgIdentity {
@@ -412,6 +450,20 @@ private final class MockCredentialStore: CredentialStoring {
         deleteCount += 1
         if let deleteError { throw deleteError }
         stored = nil
+    }
+}
+
+private final class MockSpendLimitStore: SpendLimitStoring {
+    var limitCents: Int64?
+    init(_ limitCents: Int64? = nil) { self.limitCents = limitCents }
+}
+
+private final class MockNotificationPrefs: NotificationPreferenceStoring {
+    var alertEnabled: Bool
+    var lastAlertedMonth: String?
+    init(enabled: Bool = false, lastAlertedMonth: String? = nil) {
+        self.alertEnabled = enabled
+        self.lastAlertedMonth = lastAlertedMonth
     }
 }
 
