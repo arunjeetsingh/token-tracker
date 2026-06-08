@@ -360,6 +360,20 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertFalse(prefs.alertEnabled)
     }
 
+    func testClearingSpendLimit_disablesAlert() {
+        let limits = MockSpendLimitStore(140_000)
+        let prefs = MockNotificationPrefs(enabled: true)
+        let vm = makeVM(spendLimits: limits, notificationPrefs: prefs)
+        XCTAssertTrue(vm.spendAlertEnabled)
+
+        // Clearing the limit must turn the alert off (nothing to compare against).
+        vm.setSpendLimit(nil)
+
+        XCTAssertNil(vm.spendLimitCents)
+        XCTAssertFalse(vm.spendAlertEnabled)
+        XCTAssertFalse(prefs.alertEnabled)
+    }
+
     private func org(_ name: String) -> AnthropicAPI.OrgIdentity {
         AnthropicAPI.OrgIdentity(id: "org_test", type: "organization", name: name)
     }

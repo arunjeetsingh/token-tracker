@@ -56,10 +56,17 @@ final class DashboardViewModel: ObservableObject {
         self.spendAlertEnabled = notificationPrefs.alertEnabled
     }
 
-    /// Persist (or clear, when nil) the local spend-limit target.
+    /// Persist (or clear, when nil) the local spend-limit target. Clearing the
+    /// limit also turns off the 90% alert — there's nothing to compare against,
+    /// so leaving it on would strand a scheduled background check and a
+    /// disabled-but-on switch in Settings. The view layer reacts to
+    /// `spendAlertEnabled` flipping to cancel the scheduled task.
     func setSpendLimit(_ cents: Int64?) {
         spendLimits.limitCents = cents
         spendLimitCents = cents
+        if cents == nil, spendAlertEnabled {
+            setSpendAlertEnabled(false)
+        }
     }
 
     /// Persist the spend-alert opt-in. The view layer requests notification

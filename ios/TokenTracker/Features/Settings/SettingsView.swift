@@ -116,21 +116,21 @@ struct SettingsView: View {
         return Money(cents: cents).formatted()
     }
 
-    /// Toggling on requests notification permission and schedules the background
-    /// check; we only persist `enabled = true` once permission is granted.
+    /// Toggling on requests notification permission; we only persist
+    /// `enabled = true` once it's granted. Scheduling/cancelling the background
+    /// check is driven off the opt-in flag in `DashboardView.onChange`, so it
+    /// also reacts when clearing the limit turns the alert off.
     private var alertBinding: Binding<Bool> {
         Binding(
             get: { spendAlertEnabled },
             set: { wantOn in
                 if !wantOn {
                     onAlertEnabledChange(false)
-                    SpendAlertScheduler.cancel()
                     return
                 }
                 Task {
                     if await SpendAlertNotifier.requestAuthorization() {
                         onAlertEnabledChange(true)
-                        SpendAlertScheduler.schedule()
                     }
                 }
             }

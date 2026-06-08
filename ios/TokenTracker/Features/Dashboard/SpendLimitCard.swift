@@ -60,7 +60,7 @@ struct SpendLimitCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("Resets \(SpendLimit.nextResetDate(after: report.finalizedThrough).formatted(date: .abbreviated, time: .omitted))")
+            Text("Resets \(SpendLimit.resetDateText(after: report.finalizedThrough))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

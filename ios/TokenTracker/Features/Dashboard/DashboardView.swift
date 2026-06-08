@@ -29,6 +29,16 @@ struct DashboardView: View {
                 SpendAlertScheduler.schedule()
             }
         }
+        // Single place that schedules/cancels the background check, driven off
+        // the opt-in flag — so it also cancels when clearing the limit turns the
+        // alert off, not just when the user toggles it.
+        .onChange(of: viewModel.spendAlertEnabled) { _, enabled in
+            if enabled {
+                SpendAlertScheduler.schedule()
+            } else {
+                SpendAlertScheduler.cancel()
+            }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(
                 maskedKey: viewModel.maskedKey,
