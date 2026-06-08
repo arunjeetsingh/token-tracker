@@ -17,6 +17,7 @@ import studio.maximumimpact.tokencounter.core.DemoData
 import studio.maximumimpact.tokencounter.credentials.AnthropicKeyValidation
 import studio.maximumimpact.tokencounter.credentials.CredentialStore
 import studio.maximumimpact.tokencounter.data.DemoModeStore
+import studio.maximumimpact.tokencounter.data.NotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.ReportCache
 import studio.maximumimpact.tokencounter.data.SpendLimitStore
 import studio.maximumimpact.tokencounter.providers.CostProvider
@@ -48,7 +49,8 @@ class DashboardViewModel(
     private val credentialStore: CredentialStore,
     private val cache: ReportCache,
     private val demoMode: DemoModeStore,
-    private val spendLimitStore: SpendLimitStore
+    private val spendLimitStore: SpendLimitStore,
+    private val notificationPrefs: NotificationPrefsStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<DashboardState>(DashboardState.Loading)
@@ -73,9 +75,31 @@ class DashboardViewModel(
     val spendLimitCents: StateFlow<Long?> =
         spendLimitStore.limitCents.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Persist (or clear, when null) the local spend-limit target. */
+    /**
+     * Persist (or clear, when null) the local spend-limit target. Clearing the
+     * limit also turns off the 90% alert: there's nothing to compare against, so
+     * leaving it on would strand a scheduled background check and a
+     * disabled-but-on switch in Settings. The host's `LaunchedEffect(alertEnabled)`
+     * then cancels the worker.
+     */
     fun setSpendLimit(cents: Long?) {
-        viewModelScope.launch { spendLimitStore.setLimitCents(cents) }
+        viewModelScope.launch {
+            spendLimitStore.setLimitCents(cents)
+            if (cents == null) notificationPrefs.setAlertEnabled(false)
+        }
+    }
+
+    /** Whether the user opted into the "90% of limit" spend alert. */
+    val alertEnabled: StateFlow<Boolean> =
+        notificationPrefs.alertEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /**
+     * Persist the spend-alert opt-in. The UI only calls this with `true` after
+     * notification permission is granted; scheduling the background check is
+     * driven off this flag by the host.
+     */
+    fun setAlertEnabled(enabled: Boolean) {
+        viewModelScope.launch { notificationPrefs.setAlertEnabled(enabled) }
     }
 
     fun bootstrap() {
@@ -235,9 +259,12 @@ class DashboardViewModel(
             credentialStore: CredentialStore,
             cache: ReportCache,
             demoMode: DemoModeStore,
-            spendLimitStore: SpendLimitStore
+            spendLimitStore: SpendLimitStore,
+            notificationPrefs: NotificationPrefsStore
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { DashboardViewModel(cost, credentialStore, cache, demoMode, spendLimitStore) }
+            initializer {
+                DashboardViewModel(cost, credentialStore, cache, demoMode, spendLimitStore, notificationPrefs)
+            }
         }
     }
 }

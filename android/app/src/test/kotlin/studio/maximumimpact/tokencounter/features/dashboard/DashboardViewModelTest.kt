@@ -23,6 +23,7 @@ import studio.maximumimpact.tokencounter.core.MtdCost
 import studio.maximumimpact.tokencounter.credentials.CredentialStore
 import studio.maximumimpact.tokencounter.data.CachedReport
 import studio.maximumimpact.tokencounter.data.DemoModeStore
+import studio.maximumimpact.tokencounter.data.NotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.ReportCache
 import studio.maximumimpact.tokencounter.data.SpendLimitStore
 import studio.maximumimpact.tokencounter.providers.CostProvider
@@ -68,6 +69,15 @@ private class FakeSpendLimitStore(initial: Long? = null) : SpendLimitStore {
     override suspend fun setLimitCents(cents: Long?) { flow.value = cents }
 }
 
+private class FakeNotificationPrefsStore(initial: Boolean = false) : NotificationPrefsStore {
+    private val flow = MutableStateFlow(initial)
+    private var lastMonth: String? = null
+    override val alertEnabled: Flow<Boolean> = flow
+    override suspend fun setAlertEnabled(enabled: Boolean) { flow.value = enabled }
+    override suspend fun getLastAlertedMonth(): String? = lastMonth
+    override suspend fun setLastAlertedMonth(month: String?) { lastMonth = month }
+}
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DashboardViewModelTest {
 
@@ -79,6 +89,7 @@ class DashboardViewModelTest {
     private lateinit var cache: FakeReportCache
     private lateinit var demo: FakeDemoModeStore
     private lateinit var spendLimit: FakeSpendLimitStore
+    private lateinit var notificationPrefs: FakeNotificationPrefsStore
 
     @Before
     fun setUp() {
@@ -88,6 +99,7 @@ class DashboardViewModelTest {
         cache = FakeReportCache()
         demo = FakeDemoModeStore()
         spendLimit = FakeSpendLimitStore()
+        notificationPrefs = FakeNotificationPrefsStore()
     }
 
     @After
@@ -95,7 +107,8 @@ class DashboardViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel() = DashboardViewModel(cost, creds, cache, demo, spendLimit)
+    private fun viewModel() =
+        DashboardViewModel(cost, creds, cache, demo, spendLimit, notificationPrefs)
 
     private fun authError(): HttpException =
         HttpException(Response.error<Any>(401, "".toResponseBody(null)))
@@ -209,6 +222,36 @@ class DashboardViewModelTest {
         vm.setSpendLimit(null)
         advanceUntilIdle()
         assertNull(vm.spendLimitCents.value)
+    }
+
+    @Test
+    fun setAlertEnabled_persists() = runTest(dispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertFalse(vm.alertEnabled.value)
+
+        vm.setAlertEnabled(true)
+        advanceUntilIdle()
+        assertTrue(vm.alertEnabled.value)
+
+        vm.setAlertEnabled(false)
+        advanceUntilIdle()
+        assertFalse(vm.alertEnabled.value)
+    }
+
+    @Test
+    fun setSpendLimit_null_alsoDisablesAlert() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.setSpendLimit(140_000)
+        vm.setAlertEnabled(true)
+        advanceUntilIdle()
+        assertTrue(vm.alertEnabled.value)
+
+        // Clearing the limit must turn the alert off (nothing to compare against).
+        vm.setSpendLimit(null)
+        advanceUntilIdle()
+        assertNull(vm.spendLimitCents.value)
+        assertFalse(vm.alertEnabled.value)
     }
 
     @Test

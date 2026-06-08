@@ -21,6 +21,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import studio.maximumimpact.tokencounter.credentials.KeystoreCredentialStore
 import studio.maximumimpact.tokencounter.data.DataStoreDemoModeStore
+import studio.maximumimpact.tokencounter.data.DataStoreNotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.DataStoreReportCache
 import studio.maximumimpact.tokencounter.data.DataStoreSpendLimitStore
 import studio.maximumimpact.tokencounter.features.dashboard.ConnectResult
@@ -31,6 +32,7 @@ import studio.maximumimpact.tokencounter.features.dashboard.ErrorView
 import studio.maximumimpact.tokencounter.features.dashboard.SpendLimitDialog
 import studio.maximumimpact.tokencounter.features.onboarding.OnboardingScreen
 import studio.maximumimpact.tokencounter.features.settings.SettingsSheet
+import studio.maximumimpact.tokencounter.notifications.SpendAlertScheduler
 import studio.maximumimpact.tokencounter.providers.LiveCostProvider
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 
@@ -53,7 +55,8 @@ fun TokenCounterApp() {
                 credentialStore = KeystoreCredentialStore.create(app),
                 cache = DataStoreReportCache.create(app),
                 demoMode = DataStoreDemoModeStore.create(app),
-                spendLimitStore = DataStoreSpendLimitStore.create(app)
+                spendLimitStore = DataStoreSpendLimitStore.create(app),
+                notificationPrefs = DataStoreNotificationPrefsStore.create(app)
             )
         }
         val viewModel: DashboardViewModel = viewModel(factory = factory)
@@ -65,6 +68,13 @@ fun TokenCounterApp() {
         val isDemo by viewModel.isDemo.collectAsState()
         val maskedKey by viewModel.maskedKey.collectAsState()
         val spendLimitCents by viewModel.spendLimitCents.collectAsState()
+        val alertEnabled by viewModel.alertEnabled.collectAsState()
+
+        // Schedule / cancel the background spend-alert check to follow the opt-in.
+        LaunchedEffect(alertEnabled) {
+            val app = context.applicationContext
+            if (alertEnabled) SpendAlertScheduler.enable(app) else SpendAlertScheduler.disable(app)
+        }
 
         val scope = rememberCoroutineScope()
         var showSettings by remember { mutableStateOf(false) }
@@ -113,10 +123,12 @@ fun TokenCounterApp() {
                 maskedKey = maskedKey ?: "—",
                 appVersion = APP_VERSION,
                 spendLimitCents = spendLimitCents,
+                alertEnabled = alertEnabled,
                 onEditLimit = {
                     showSettings = false
                     showLimitDialog = true
                 },
+                onAlertEnabledChange = { viewModel.setAlertEnabled(it) },
                 onDisconnect = {
                     showSettings = false
                     viewModel.disconnect()
