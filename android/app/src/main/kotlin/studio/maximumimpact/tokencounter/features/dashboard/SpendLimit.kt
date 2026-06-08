@@ -24,13 +24,17 @@ object SpendLimit {
     /** Visual severity for the gauge, driven by how close spend is to the limit. */
     enum class Severity { NORMAL, APPROACHING, OVER }
 
-    /** APPROACHING at >= 80% of the limit, OVER at >= 100%. */
+    /**
+     * APPROACHING at >= 80% of the limit, OVER at >= 100%. Compares the raw
+     * ratio (not the rounded [percentUsed]) so a value just under a threshold —
+     * e.g. 79.5% or 99.5% — doesn't cross early via display rounding.
+     */
     fun severity(spentCents: Long, limitCents: Long): Severity {
         if (limitCents <= 0L) return Severity.NORMAL
-        val pct = percentUsed(spentCents, limitCents)
+        val ratio = spentCents.toDouble() / limitCents.toDouble()
         return when {
-            pct >= 100 -> Severity.OVER
-            pct >= 80 -> Severity.APPROACHING
+            ratio >= 1.0 -> Severity.OVER
+            ratio >= 0.8 -> Severity.APPROACHING
             else -> Severity.NORMAL
         }
     }
