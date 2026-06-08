@@ -9,6 +9,7 @@ import studio.maximumimpact.tokencounter.data.DataStoreDemoModeStore
 import studio.maximumimpact.tokencounter.data.DataStoreNotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.DataStoreSpendLimitStore
 import studio.maximumimpact.tokencounter.providers.LiveCostProvider
+import studio.maximumimpact.tokencounter.providers.anthropic.isAnthropicAuthError
 import kotlin.math.roundToInt
 
 /**
@@ -40,8 +41,11 @@ class SpendAlertWorker(
         val report = try {
             LiveCostProvider().monthToDateCost(key)
         } catch (e: Exception) {
-            // Transient (network / server) — let WorkManager retry with backoff.
-            return Result.retry()
+            // 401/403 means the key is bad (revoked / wrong scope) — terminal for
+            // this run, so don't hammer the API with background retries. The next
+            // foreground refresh wipes the key and re-onboards. Only transient
+            // (network / server) failures get a backoff retry.
+            return if (e.isAnthropicAuthError()) Result.success() else Result.retry()
         }
 
         val spentCents = report.total.cents

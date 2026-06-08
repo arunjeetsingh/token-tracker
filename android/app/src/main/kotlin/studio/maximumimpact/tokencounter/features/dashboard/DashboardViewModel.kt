@@ -75,9 +75,18 @@ class DashboardViewModel(
     val spendLimitCents: StateFlow<Long?> =
         spendLimitStore.limitCents.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Persist (or clear, when null) the local spend-limit target. */
+    /**
+     * Persist (or clear, when null) the local spend-limit target. Clearing the
+     * limit also turns off the 90% alert: there's nothing to compare against, so
+     * leaving it on would strand a scheduled background check and a
+     * disabled-but-on switch in Settings. The host's `LaunchedEffect(alertEnabled)`
+     * then cancels the worker.
+     */
     fun setSpendLimit(cents: Long?) {
-        viewModelScope.launch { spendLimitStore.setLimitCents(cents) }
+        viewModelScope.launch {
+            spendLimitStore.setLimitCents(cents)
+            if (cents == null) notificationPrefs.setAlertEnabled(false)
+        }
     }
 
     /** Whether the user opted into the "90% of limit" spend alert. */

@@ -240,6 +240,21 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun setSpendLimit_null_alsoDisablesAlert() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.setSpendLimit(140_000)
+        vm.setAlertEnabled(true)
+        advanceUntilIdle()
+        assertTrue(vm.alertEnabled.value)
+
+        // Clearing the limit must turn the alert off (nothing to compare against).
+        vm.setSpendLimit(null)
+        advanceUntilIdle()
+        assertNull(vm.spendLimitCents.value)
+        assertFalse(vm.alertEnabled.value)
+    }
+
+    @Test
     fun disconnect_clearsKeyCacheAndDemoFlag() = runTest(dispatcher) {
         creds.stored = "sk-ant-admin01-stored"
         cache.cached = CachedReport(sampleReport, "Org")
