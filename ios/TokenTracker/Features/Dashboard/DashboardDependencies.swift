@@ -36,6 +36,18 @@ protocol ReportCaching {
     func clear()
 }
 
+/// On-device monthly spend-limit *target* (cents, nil = unset). The Admin API
+/// can't read or set the org's real limit, so this is a local tracking value.
+protocol SpendLimitStoring {
+    var limitCents: Int64? { get set }
+}
+
+/// Persists the spend-alert opt-in plus a once-per-month dedupe marker.
+protocol NotificationPreferenceStoring {
+    var alertEnabled: Bool { get set }
+    var lastAlertedMonth: String? { get set }
+}
+
 // MARK: - Production implementations
 
 /// Wraps `AnthropicClient`. A fresh client is created per call; construction is
@@ -63,4 +75,50 @@ struct LiveReportCache: ReportCaching {
     func load() -> (report: MTDCost, orgName: String)? { DashboardCache.load() }
     func save(report: MTDCost, orgName: String) { DashboardCache.save(report: report, orgName: orgName) }
     func clear() { DashboardCache.clear() }
+}
+
+/// UserDefaults-backed local spend limit. Non-sensitive, so it sits alongside
+/// the report cache rather than in the Keychain.
+struct LiveSpendLimitStore: SpendLimitStoring {
+    private let defaults: UserDefaults
+    private let key = "SpendLimit.cents.v1"
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    var limitCents: Int64? {
+        get { (defaults.object(forKey: key) as? NSNumber)?.int64Value }
+        set {
+            if let newValue {
+                defaults.set(NSNumber(value: newValue), forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+    }
+}
+
+/// UserDefaults-backed spend-alert preferences. Default: alerts off (we only
+/// request notification permission when the user turns this on).
+struct LiveNotificationPrefs: NotificationPreferenceStoring {
+    private let defaults: UserDefaults
+    private let enabledKey = "SpendAlert.enabled.v1"
+    private let lastMonthKey = "SpendAlert.lastMonth.v1"
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    var alertEnabled: Bool {
+        get { defaults.bool(forKey: enabledKey) }
+        set { defaults.set(newValue, forKey: enabledKey) }
+    }
+
+    var lastAlertedMonth: String? {
+        get { defaults.string(forKey: lastMonthKey) }
+        set {
+            if let newValue {
+                defaults.set(newValue, forKey: lastMonthKey)
+            } else {
+                defaults.removeObject(forKey: lastMonthKey)
+            }
+        }
+    }
 }

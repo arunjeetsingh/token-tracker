@@ -52,6 +52,13 @@ targets:
           - arm64
         NSFaceIDUsageDescription: "Used to unlock your Anthropic admin key from the device Keychain."
         ITSAppUsesNonExemptEncryption: false
+        # Background spend-alert check (opt-in). The scheduled BGAppRefreshTask
+        # re-fetches MTD cost and posts a local notification at >=90% of the
+        # user's limit.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - ai.openclaw.tokentracker.spendalert
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.tokentracker.TokenTracker

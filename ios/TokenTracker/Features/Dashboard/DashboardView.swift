@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @State private var showSettings = false
+    @State private var showLimitEditor = false
 
     var body: some View {
         NavigationStack {
@@ -19,12 +20,42 @@ struct DashboardView: View {
                     }
                 }
         }
-        .task { await viewModel.bootstrap() }
+        .task {
+            await viewModel.bootstrap()
+            // Keep the background spend-alert check scheduled across launches
+            // while the user has it enabled. (SwiftUI registers the handler via
+            // `.backgroundTask` in TokenTrackerApp.)
+            if viewModel.spendAlertEnabled {
+                SpendAlertScheduler.schedule()
+            }
+        }
+        // Single place that schedules/cancels the background check, driven off
+        // the opt-in flag — so it also cancels when clearing the limit turns the
+        // alert off, not just when the user toggles it.
+        .onChange(of: viewModel.spendAlertEnabled) { _, enabled in
+            if enabled {
+                SpendAlertScheduler.schedule()
+            } else {
+                SpendAlertScheduler.cancel()
+            }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(
                 maskedKey: viewModel.maskedKey,
                 orgName: viewModel.state.orgName,
+                spendLimitCents: viewModel.spendLimitCents,
+                spendAlertEnabled: viewModel.spendAlertEnabled,
+                onSetLimit: { viewModel.setSpendLimit($0) },
+                onClearLimit: { viewModel.setSpendLimit(nil) },
+                onAlertEnabledChange: { viewModel.setSpendAlertEnabled($0) },
                 onDisconnect: { await viewModel.disconnect() }
+            )
+        }
+        .sheet(isPresented: $showLimitEditor) {
+            SpendLimitEditor(
+                currentCents: viewModel.spendLimitCents,
+                onSave: { viewModel.setSpendLimit($0) },
+                onClear: { viewModel.setSpendLimit(nil) }
             )
         }
     }
@@ -172,6 +203,11 @@ struct DashboardView: View {
                 }
             }
             VStack(spacing: 24) {
+                SpendLimitCard(
+                    report: report,
+                    limitCents: viewModel.spendLimitCents,
+                    onAdjust: { showLimitEditor = true }
+                )
                 if !report.dailySpend.isEmpty {
                     SpendBarChart(data: report.dailySpend)
                 }
