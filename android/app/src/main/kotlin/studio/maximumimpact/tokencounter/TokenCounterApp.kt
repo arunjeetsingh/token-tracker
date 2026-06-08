@@ -22,11 +22,13 @@ import kotlinx.coroutines.launch
 import studio.maximumimpact.tokencounter.credentials.KeystoreCredentialStore
 import studio.maximumimpact.tokencounter.data.DataStoreDemoModeStore
 import studio.maximumimpact.tokencounter.data.DataStoreReportCache
+import studio.maximumimpact.tokencounter.data.DataStoreSpendLimitStore
 import studio.maximumimpact.tokencounter.features.dashboard.ConnectResult
 import studio.maximumimpact.tokencounter.features.dashboard.DashboardScreen
 import studio.maximumimpact.tokencounter.features.dashboard.DashboardState
 import studio.maximumimpact.tokencounter.features.dashboard.DashboardViewModel
 import studio.maximumimpact.tokencounter.features.dashboard.ErrorView
+import studio.maximumimpact.tokencounter.features.dashboard.SpendLimitDialog
 import studio.maximumimpact.tokencounter.features.onboarding.OnboardingScreen
 import studio.maximumimpact.tokencounter.features.settings.SettingsSheet
 import studio.maximumimpact.tokencounter.providers.LiveCostProvider
@@ -50,7 +52,8 @@ fun TokenCounterApp() {
                 cost = LiveCostProvider(),
                 credentialStore = KeystoreCredentialStore.create(app),
                 cache = DataStoreReportCache.create(app),
-                demoMode = DataStoreDemoModeStore.create(app)
+                demoMode = DataStoreDemoModeStore.create(app),
+                spendLimitStore = DataStoreSpendLimitStore.create(app)
             )
         }
         val viewModel: DashboardViewModel = viewModel(factory = factory)
@@ -61,9 +64,11 @@ fun TokenCounterApp() {
         val isRefreshing by viewModel.isRefreshing.collectAsState()
         val isDemo by viewModel.isDemo.collectAsState()
         val maskedKey by viewModel.maskedKey.collectAsState()
+        val spendLimitCents by viewModel.spendLimitCents.collectAsState()
 
         val scope = rememberCoroutineScope()
         var showSettings by remember { mutableStateOf(false) }
+        var showLimitDialog by remember { mutableStateOf(false) }
         var isConnecting by remember { mutableStateOf(false) }
         var submitError by remember { mutableStateOf<String?>(null) }
 
@@ -89,6 +94,8 @@ fun TokenCounterApp() {
                 report = current.report,
                 isDemo = isDemo,
                 isRefreshing = isRefreshing,
+                spendLimitCents = spendLimitCents,
+                onAdjustLimit = { showLimitDialog = true },
                 onRefresh = { viewModel.refresh() },
                 onOpenSettings = { showSettings = true }
             )
@@ -105,11 +112,31 @@ fun TokenCounterApp() {
                 orgName = (state as DashboardState.Loaded).orgName,
                 maskedKey = maskedKey ?: "—",
                 appVersion = APP_VERSION,
+                spendLimitCents = spendLimitCents,
+                onEditLimit = {
+                    showSettings = false
+                    showLimitDialog = true
+                },
                 onDisconnect = {
                     showSettings = false
                     viewModel.disconnect()
                 },
                 onDismiss = { showSettings = false }
+            )
+        }
+
+        if (showLimitDialog) {
+            SpendLimitDialog(
+                currentCents = spendLimitCents,
+                onConfirm = {
+                    viewModel.setSpendLimit(it)
+                    showLimitDialog = false
+                },
+                onClear = {
+                    viewModel.setSpendLimit(null)
+                    showLimitDialog = false
+                },
+                onDismiss = { showLimitDialog = false }
             )
         }
     }
