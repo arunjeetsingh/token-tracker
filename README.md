@@ -4,13 +4,13 @@ Track token burn and token costs for popular cloud LLM platforms (Claude, OpenAI
 
 ## Status
 
-🚧 MVP in progress.
+🚀 Shipped — iOS is live on the App Store and Android is live on Google Play. Both track month-to-date Anthropic spend from the Usage & Cost Admin API.
 
-- **Phase 1 (MVP):** iOS app, Claude platform only, shows month-to-date cost from the Anthropic Usage & Cost Admin API.
-- **Phase 2:** Add per-model breakdowns, daily/weekly trends, alerts.
-- **Phase 3:** OpenAI + Gemini support.
-- **Phase 4:** Android.
-- **Phase 5 (maybe):** Web app.
+- **Phase 1 (MVP):** ✅ iOS app, Claude platform only, month-to-date cost from the Anthropic Usage & Cost Admin API.
+- **Phase 2:** ✅ Per-model breakdown, 30-day spend sparkline, and a spend-limit gauge with a 90%-of-limit alert.
+- **Phase 3:** ⏳ OpenAI + Gemini support — not started (see [api-research.md](docs/api-research.md)).
+- **Phase 4:** ✅ Android app (native Kotlin + Jetpack Compose), at parity with iOS.
+- **Phase 5 (maybe):** Web app — undecided.
 
 ## Repo layout
 
