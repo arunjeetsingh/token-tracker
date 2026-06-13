@@ -64,6 +64,10 @@ sys.exit('no simulator named \"%s\" found' % target)
   mkdir -p "$out_dir"
 
   # 1. Dashboard — loaded state via DemoMode (default screen = dashboard)
+  # Seed a $10,000 monthly spend limit (in cents) so the SpendLimitCard
+  # renders a meaningful ~76% gauge against the demo data instead of the
+  # empty "Set limit" prompt. Key matches LiveSpendLimitStore.
+  xcrun simctl spawn "$udid" defaults write "$BUNDLE_ID" "SpendLimit.cents.v1" -int 1000000
   xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
   xcrun simctl launch "$udid" "$BUNDLE_ID" -DemoMode YES >/dev/null
   sleep 4
