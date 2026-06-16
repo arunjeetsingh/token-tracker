@@ -1,16 +1,37 @@
 # token-tracker
 
-Track token burn and token costs for popular cloud LLM platforms (Claude, OpenAI, Gemini, …) — iOS first.
+TokenCounter — track token burn and token costs for popular cloud LLM platforms
+(Claude today; OpenAI/Gemini next). Native iOS **and** Android, bring-your-own-key,
+privacy-first: your admin key stays on-device and is never sent anywhere except
+`api.anthropic.com`. No account, no server, no analytics.
 
 ## Status
 
-🚀 Shipped — iOS is live on the App Store and Android is live on Google Play. Both track month-to-date Anthropic spend from the Usage & Cost Admin API.
+🚀 **Shipped and open source.** iOS is live on the App Store and Android is live on
+Google Play. Both show month-to-date Anthropic spend from the Usage & Cost Admin
+API, with a per-model breakdown, a 30-day trend, and a spend-limit gauge + 90% alert.
+
+**Get it:**
+
+- 📱 iOS — App Store: <https://apps.apple.com/app/id6772613833>
+- 🤖 Android — Google Play: <https://play.google.com/store/apps/details?id=studio.maximumimpact.tokencounter>
+- 🌐 Product page: <https://maximumimpact.studio/tokencounter/>
+
+### Roadmap
 
 - **Phase 1 (MVP):** ✅ iOS app, Claude platform only, month-to-date cost from the Anthropic Usage & Cost Admin API.
 - **Phase 2:** ✅ Per-model breakdown, 30-day spend sparkline, and a spend-limit gauge with a 90%-of-limit alert.
-- **Phase 3:** ⏳ OpenAI + Gemini support — not started (see [api-research.md](docs/api-research.md)).
-- **Phase 4:** ✅ Android app (native Kotlin + Jetpack Compose), at parity with iOS.
+- **Phase 3:** ⏳ OpenAI + Gemini support — next up; OpenAI first (see [api-research.md](docs/api-research.md)).
+- **Phase 4:** ✅ Android app (native Kotlin + Jetpack Compose), at full feature parity with iOS.
 - **Phase 5 (maybe):** Web app — undecided.
+
+### Highlights so far
+
+- **Two native apps, full parity.** SwiftUI on iOS, Jetpack Compose on Android — same dashboard, same features, same privacy posture.
+- **Live data, on-device only.** Reads straight from Anthropic's Cost & Usage API; finalized month-to-date spend plus a token-priced estimate of today.
+- **Spend limit + alert.** A local monthly target with a gauge (orange at 80%, red over 100%) and an opt-in once-a-month 90% notification. Console deep-links for the real billing limit/credit/auto-reload.
+- **Open source.** Public repo, MIT-spirited — audit how your key is handled, file issues, send PRs.
+- **Automated release pipelines.** CI ships signed builds to TestFlight (iOS) and Google Play internal testing (Android), with auto patch-version bumps.
 
 ## Repo layout
 
@@ -85,7 +106,7 @@ cd android
 adb shell am start -n studio.maximumimpact.tokencounter/.MainActivity
 ```
 
-The v1 build is a hello-only dashboard with hardcoded numbers; there's no data layer yet.
+The shipping build has a full live data layer: it reads the Anthropic Cost & Usage API, computes month-to-date spend plus a token-priced estimate of today, caches the last snapshot for instant cold launch, and stores the admin key in the Android Keystore. (A review/demo key short-circuits to a canned snapshot so store review never needs a real key.)
 
 ### iOS app
 
@@ -114,11 +135,12 @@ xcodebuild \
 
 ## Workflow
 
-- **Private repo** on GitHub (`arunjeetsingh/token-tracker`).
-- **PRs only** after first push. Branch protection isn't configurable on free-tier private repos, so the convention is enforced by a local pre-push hook. Install it after cloning:
+- **Public, open-source repo** on GitHub (`arunjeetsingh/token-tracker`).
+- **PRs only.** The convention is enforced by a local pre-push hook. Install it after cloning:
   ```bash
   ./scripts/install-git-hooks.sh
   ```
   This blocks `git push origin main`. Override only in emergencies with `git push --no-verify origin main`.
 - Arun reviews and merges every PR.
-- CI runs on every PR via GitHub Actions (Python lint + iOS build/test).
+- CI runs on every PR via GitHub Actions (Python lint + iOS/Android build & test).
+- **Release pipelines** (manual dispatch): `testflight.yml` builds + uploads the iOS app to TestFlight; `android-release.yml` builds a signed AAB and publishes to Google Play (internal track). Both auto-bump the patch version and commit it back to `main` with `[skip ci]`.
