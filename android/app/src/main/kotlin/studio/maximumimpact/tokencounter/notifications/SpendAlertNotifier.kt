@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -19,6 +20,7 @@ object SpendAlertNotifier {
 
     const val CHANNEL_ID = "spend_alerts"
     private const val NOTIFICATION_ID = 4201
+    private const val TAG = "SpendAlertNotifier"
 
     /** Idempotent — creates the channel if it doesn't exist (minSdk 26). */
     fun ensureChannel(context: Context) {
@@ -42,7 +44,14 @@ object SpendAlertNotifier {
      * the background worker.
      */
     fun notifySpendApproaching(context: Context, spentFormatted: String, percent: Int) {
-        if (!hasPermission(context)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         ensureChannel(context)
 
         val openApp = Intent(context, MainActivity::class.java).apply {
@@ -64,13 +73,11 @@ object SpendAlertNotifier {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            // Permission can be revoked between the explicit check and notify().
+            Log.w(TAG, "Unable to post spend alert because notification permission was revoked.", e)
+        }
     }
-
-    private fun hasPermission(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
 }
