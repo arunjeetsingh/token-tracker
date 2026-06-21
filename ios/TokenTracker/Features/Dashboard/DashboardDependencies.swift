@@ -2,7 +2,7 @@ import Foundation
 
 /// Dependency seams for `DashboardViewModel`.
 ///
-/// The view model orchestrates three collaborators — the Anthropic cost API,
+/// The view model orchestrates three collaborators — the provider cost API,
 /// the Keychain-backed credential store, and the on-device report cache. In
 /// production each protocol is a thin wrapper over the existing concrete type
 /// (`AnthropicClient`, `KeychainStore`, `DashboardCache`); tests substitute
@@ -31,7 +31,7 @@ func providerKind(for apiKey: String) -> ProviderKind {
     apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sk-ant-") ? .anthropic : .openAI
 }
 
-/// Reads / writes the single Anthropic admin-key slot in the Keychain.
+/// Reads / writes the single provider API-key slot in the Keychain.
 protocol CredentialStoring {
     func load() throws -> String?
     func save(_ value: String) throws

@@ -50,7 +50,7 @@ targets:
           - UIInterfaceOrientationPortrait
         UIRequiredDeviceCapabilities:
           - arm64
-        NSFaceIDUsageDescription: "Used to unlock your Anthropic admin key from the device Keychain."
+        NSFaceIDUsageDescription: "Used to unlock your provider API key from the device Keychain."
         ITSAppUsesNonExemptEncryption: false
         # Background spend-alert check (opt-in). The scheduled BGAppRefreshTask
         # re-fetches MTD cost and posts a local notification at >=90% of the

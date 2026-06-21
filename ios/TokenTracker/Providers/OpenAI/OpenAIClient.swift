@@ -183,6 +183,8 @@ actor OpenAIClient {
         guard !words.isEmpty else { return raw }
         return words.map { word in
             let lower = word.lowercased()
+            if lower == "gpt" { return "GPT" }
+            if lower == "api" { return "API" }
             return lower.prefix(1).uppercased() + lower.dropFirst()
         }.joined(separator: " ")
     }

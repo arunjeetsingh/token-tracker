@@ -78,13 +78,14 @@ final class OpenAIClientTests: XCTestCase {
 
         XCTAssertEqual(report.modelBreakdown.count, 4)
         XCTAssertEqual(report.modelBreakdown[0].modelId, "model:gpt-4o-mini")
-        XCTAssertEqual(report.modelBreakdown[0].displayName, "Gpt 4o Mini")
+        XCTAssertEqual(report.modelBreakdown[0].displayName, "GPT 4o Mini")
         XCTAssertEqual(report.modelBreakdown[0].cost.cents, 2000)
         XCTAssertEqual(report.modelBreakdown[1].modelId, "model:gpt-4.1")
         XCTAssertEqual(report.modelBreakdown[1].cost.cents, 1234)
         XCTAssertEqual(report.modelBreakdown[2].modelId, "proj_alpha")
         XCTAssertEqual(report.modelBreakdown[2].cost.cents, 400)
         XCTAssertEqual(report.modelBreakdown[3].modelId, "batch_api")
+        XCTAssertEqual(report.modelBreakdown[3].displayName, "Batch API")
         XCTAssertEqual(report.modelBreakdown[3].cost.cents, 34)
     }
 

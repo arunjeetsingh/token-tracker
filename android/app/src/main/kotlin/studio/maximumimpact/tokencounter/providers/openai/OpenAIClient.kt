@@ -99,7 +99,13 @@ class OpenAIClient(private val api: OpenAIApi) {
         .replace('_', ' ')
         .split(' ')
         .filter { it.isNotBlank() }
-        .joinToString(" ") { word -> word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } }
+        .joinToString(" ") { word ->
+            when (word.lowercase()) {
+                "gpt" -> "GPT"
+                "api" -> "API"
+                else -> word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
+        }
         .ifBlank { raw }
 
     private fun epochSeconds(day: LocalDate): Long = day.atStartOfDay(ZoneOffset.UTC).toEpochSecond()

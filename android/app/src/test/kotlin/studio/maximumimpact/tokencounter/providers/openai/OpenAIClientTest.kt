@@ -105,13 +105,14 @@ class OpenAIClientTest {
 
         assertEquals(4, report.modelBreakdown.size)
         assertEquals("model:gpt-4o-mini", report.modelBreakdown[0].modelId)
-        assertEquals("Gpt 4o Mini", report.modelBreakdown[0].displayName)
+        assertEquals("GPT 4o Mini", report.modelBreakdown[0].displayName)
         assertEquals(Money(2000), report.modelBreakdown[0].cost)
         assertEquals("model:gpt-4.1", report.modelBreakdown[1].modelId)
         assertEquals(Money(1234), report.modelBreakdown[1].cost)
         assertEquals("proj_alpha", report.modelBreakdown[2].modelId)
         assertEquals(Money(400), report.modelBreakdown[2].cost)
         assertEquals("batch_api", report.modelBreakdown[3].modelId)
+        assertEquals("Batch API", report.modelBreakdown[3].displayName)
         assertEquals(Money(34), report.modelBreakdown[3].cost)
     }
 
