@@ -21,7 +21,7 @@ import studio.maximumimpact.tokencounter.data.NotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.ReportCache
 import studio.maximumimpact.tokencounter.data.SpendLimitStore
 import studio.maximumimpact.tokencounter.providers.CostProvider
-import studio.maximumimpact.tokencounter.providers.anthropic.isAnthropicAuthError
+import studio.maximumimpact.tokencounter.providers.isProviderAuthError
 
 /** Result of a [DashboardViewModel.connect] attempt, surfaced to onboarding. */
 sealed interface ConnectResult {
@@ -155,7 +155,7 @@ class DashboardViewModel(
                 _state.value = DashboardState.Loaded(identity.name, report)
                 ConnectResult.Success
             } catch (e: Exception) {
-                if (e.isAnthropicAuthError()) {
+                if (e.isProviderAuthError()) {
                     wipeCredentialsAndReOnboard()
                     ConnectResult.Failure(REJECTED_KEY_MESSAGE)
                 } else {
@@ -165,7 +165,7 @@ class DashboardViewModel(
             }
         } catch (e: Exception) {
             _state.value = DashboardState.NeedsCredentials
-            if (e.isAnthropicAuthError()) {
+            if (e.isProviderAuthError()) {
                 ConnectResult.Failure(REJECTED_KEY_MESSAGE)
             } else {
                 ConnectResult.Failure(e.message ?: "Couldn't connect. Check your connection and try again.")
@@ -219,7 +219,7 @@ class DashboardViewModel(
                 _state.value = DashboardState.Loaded(org.name, mtd)
             }
         } catch (e: Exception) {
-            if (e.isAnthropicAuthError()) {
+            if (e.isProviderAuthError()) {
                 // Token went bad — wipe it (and the cache) and force re-onboarding.
                 wipeCredentialsAndReOnboard()
             } else if (!hasSomethingToShow) {
@@ -250,8 +250,8 @@ class DashboardViewModel(
 
     companion object {
         private const val REJECTED_KEY_MESSAGE =
-            "Anthropic rejected this key. Double-check you copied an Admin key " +
-                "(starts with sk-ant-admin01-…) and try again."
+            "Your provider rejected this key. Double-check that you copied the right " +
+                "admin/project key and try again."
 
         /** Builds a factory wiring the live collaborators from app dependencies. */
         fun factory(

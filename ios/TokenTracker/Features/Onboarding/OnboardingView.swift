@@ -1,10 +1,10 @@
 import SwiftUI
 import SafariServices
 
-/// First-launch onboarding for the Anthropic admin key. Three steps:
+/// First-launch onboarding for a provider API key. Three steps:
 ///
 /// 1. Welcome + "why we need this".
-/// 2. Open Anthropic console (in-app Safari) to create a key.
+/// 2. Open the provider console (in-app Safari) to create a key.
 /// 3. Paste key (with clipboard auto-detect) → save.
 ///
 /// The view does not own the credential; it asks `onSubmit` to persist + verify.
@@ -270,7 +270,7 @@ struct SafariURL: Identifiable {
     var id: String { url.absoluteString }
 }
 
-/// Wraps `SFSafariViewController` so we can present the Anthropic console
+/// Wraps `SFSafariViewController` so we can present provider setup pages
 /// without leaving the app.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL

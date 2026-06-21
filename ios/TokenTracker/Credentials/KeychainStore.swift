@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Tiny wrapper around the Security framework Keychain for storing the
-/// Anthropic admin key. One slot per provider for now.
+/// provider API key. One slot per provider for now.
 enum KeychainStore {
     enum CredentialKey: String {
         case anthropicAdminKey = "ai.openclaw.tokentracker.anthropic.admin"

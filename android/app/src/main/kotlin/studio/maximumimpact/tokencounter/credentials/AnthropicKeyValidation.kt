@@ -1,22 +1,22 @@
 package studio.maximumimpact.tokencounter.credentials
 
 /**
- * Lightweight format check for Anthropic admin API keys. Kotlin sibling of iOS
+ * Lightweight format check for supported provider API keys. Kotlin sibling of iOS
  * `AnthropicKeyValidation`.
  *
- * Anthropic admin keys start with `sk-ant-admin01-` followed by a long opaque
- * URL-safe token. We do **not** try to be exact — just enough to (a) reject
+ * Anthropic and OpenAI keys have provider-specific `sk-` prefixes followed by
+ * a long opaque URL-safe token. We do **not** try to be exact — just enough to (a) reject
  * obvious typos and (b) recognize a paste-from-clipboard worth offering as a
  * suggestion. Real validation happens when we hit the API.
  */
 object AnthropicKeyValidation {
 
     /**
-     * Loose prefixes used by clipboard auto-detect. We accept either the admin
-     * prefix or the regular `sk-ant-` prefix; the API call itself fails fast if
-     * a non-admin key was pasted and we surface that error.
+     * Loose prefixes used by clipboard auto-detect. The API call itself fails
+     * fast if a key is malformed, revoked, or lacks the required scopes, and we
+     * surface that error.
      */
-    val clipboardPrefixes = listOf("sk-ant-admin01-", "sk-ant-api03-", "sk-ant-")
+    val clipboardPrefixes = listOf("sk-ant-admin01-", "sk-ant-api03-", "sk-ant-", "sk-proj-", "sk-")
 
     /** Minimum total length we'll even consider — keeps obvious garbage out. */
     const val MIN_LENGTH = 32
@@ -25,7 +25,7 @@ object AnthropicKeyValidation {
         ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_").toSet()
 
     /**
-     * True if [candidate] looks plausibly like an Anthropic key — used to decide
+     * True if [candidate] looks plausibly like a supported provider key — used to decide
      * whether to surface the "Paste detected key?" affordance.
      */
     fun looksLikeAnthropicKey(candidate: String): Boolean {

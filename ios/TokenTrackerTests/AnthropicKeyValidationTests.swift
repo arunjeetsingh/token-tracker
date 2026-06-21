@@ -7,6 +7,16 @@ final class AnthropicKeyValidationTests: XCTestCase {
         XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
     }
 
+    func testOpenAIProjectKeyIsRecognized() {
+        let key = "sk-proj-" + String(repeating: "A", count: 40)
+        XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
+    }
+
+    func testOpenAILegacyKeyIsRecognized() {
+        let key = "sk-" + String(repeating: "A", count: 40)
+        XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
+    }
+
     func testApiKeyIsRecognized() {
         let key = "sk-ant-api03-" + String(repeating: "Z", count: 40)
         XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))

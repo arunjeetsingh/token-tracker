@@ -159,19 +159,19 @@ final class DashboardViewModel: ObservableObject {
                 let report = try await cost.monthToDateCost(apiKey: trimmed)
                 cache.save(report: report, orgName: identity.name)
                 state = .loaded(report: report, orgName: identity.name)
-            } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
+            } catch where isProviderAuthError(error) {
                 try? keychain.delete()
                 cache.clear()
                 maskedKey = nil
                 state = .needsCredentials
-                return .failure(ConnectError(message: "Anthropic rejected this key. Double-check you copied an Admin key (starts with sk-ant-admin01-…) and try again."))
+                return .failure(ConnectError(message: Self.rejectedKeyMessage))
             } catch {
                 state = .failed(message: error.localizedDescription)
             }
             return .success(())
-        } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
+        } catch where isProviderAuthError(error) {
             state = .needsCredentials
-            return .failure(ConnectError(message: "Anthropic rejected this key. Double-check you copied an Admin key (starts with sk-ant-admin01-…) and try again."))
+            return .failure(ConnectError(message: Self.rejectedKeyMessage))
         } catch {
             state = .needsCredentials
             return .failure(ConnectError(message: error.localizedDescription))
@@ -207,7 +207,7 @@ final class DashboardViewModel: ObservableObject {
         // install — it's a no-op when nothing's stored.
         DemoMode.isPersistedActive = false
         // Drop the cached snapshot too so a fresh connection (potentially a
-        // different Anthropic org) doesn't briefly flash the previous owner's
+        // different provider account) doesn't briefly flash the previous owner's
         // data while it loads.
         cache.clear()
         do {
@@ -243,7 +243,7 @@ final class DashboardViewModel: ObservableObject {
             maskedKey = AnthropicKeyValidation.masked(key)
             cache.save(report: mtd, orgName: orgID.name)
             state = .loaded(report: mtd, orgName: orgID.name)
-        } catch let httpError as AnthropicHTTPError where httpError.status == 401 || httpError.status == 403 {
+        } catch where isProviderAuthError(error) {
             // Token went bad — wipe it (and the cache) and force re-onboarding.
             try? keychain.delete()
             cache.clear()
@@ -259,4 +259,7 @@ final class DashboardViewModel: ObservableObject {
             }
         }
     }
+
+    private static let rejectedKeyMessage =
+        "Your provider rejected this key. Double-check that you copied the right admin/project key and try again."
 }
