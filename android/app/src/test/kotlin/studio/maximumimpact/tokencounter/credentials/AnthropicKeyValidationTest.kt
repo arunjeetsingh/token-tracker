@@ -14,6 +14,18 @@ class AnthropicKeyValidationTest {
     }
 
     @Test
+    fun looksLikeAnthropicKey_acceptsPlausibleOpenAIProjectKey() {
+        val key = "sk-proj-" + "a".repeat(40)
+        assertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
+    }
+
+    @Test
+    fun looksLikeAnthropicKey_acceptsPlausibleOpenAILegacyKey() {
+        val key = "sk-" + "a".repeat(40)
+        assertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
+    }
+
+    @Test
     fun looksLikeAnthropicKey_acceptsLeadingTrailingWhitespace() {
         val key = "  sk-ant-admin01-" + "Ab9_-".repeat(8) + "  "
         assertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))

@@ -9,7 +9,7 @@ import studio.maximumimpact.tokencounter.data.DataStoreDemoModeStore
 import studio.maximumimpact.tokencounter.data.DataStoreNotificationPrefsStore
 import studio.maximumimpact.tokencounter.data.DataStoreSpendLimitStore
 import studio.maximumimpact.tokencounter.providers.LiveCostProvider
-import studio.maximumimpact.tokencounter.providers.anthropic.isAnthropicAuthError
+import studio.maximumimpact.tokencounter.providers.isProviderAuthError
 import kotlin.math.roundToInt
 
 /**
@@ -45,7 +45,7 @@ class SpendAlertWorker(
             // this run, so don't hammer the API with background retries. The next
             // foreground refresh wipes the key and re-onboards. Only transient
             // (network / server) failures get a backoff retry.
-            return if (e.isAnthropicAuthError()) Result.success() else Result.retry()
+            return if (e.isProviderAuthError()) Result.success() else Result.retry()
         }
 
         val spentCents = report.total.cents

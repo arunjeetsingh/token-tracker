@@ -163,6 +163,19 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(cost.costCount, 0, "Must not fetch cost after an auth failure")
     }
 
+    func testConnect_openAIAuthFailure_doesNotSaveKey() async {
+        let cost = MockCostProvider(whoami: .failure(TestFixtures.openAIHTTPError(401)))
+        let keychain = MockCredentialStore()
+        let vm = makeVM(cost: cost, keychain: keychain)
+
+        let result = await vm.connect(using: validKey)
+
+        XCTAssertTrue(isFailure(result))
+        XCTAssertEqual(vm.state, .needsCredentials)
+        XCTAssertEqual(keychain.saveCount, 0, "An OpenAI-rejected key must never be stored")
+        XCTAssertEqual(cost.costCount, 0, "Must not fetch cost after an auth failure")
+    }
+
     func testConnect_authFailure_preservesPersistedDemoFlag() async {
         // 401/403 on connect intentionally leaves demo mode alone so a
         // transient bad-key attempt doesn't strand a reviewer with no UI.
@@ -238,6 +251,20 @@ final class DashboardViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.state, .needsCredentials)
         XCTAssertEqual(keychain.deleteCount, 1, "Bad token is wiped")
+        XCTAssertEqual(cache.clearCount, 1, "Stale cache is wiped with the token")
+        XCTAssertNil(vm.maskedKey)
+    }
+
+    func testRefresh_openAIAuthFailure_wipesKeyAndCache() async {
+        let cost = MockCostProvider(whoami: .failure(TestFixtures.openAIHTTPError(403)))
+        let keychain = MockCredentialStore(stored: validKey)
+        let cache = MockReportCache(cached: (TestFixtures.report(), "Old Org"))
+        let vm = makeVM(cost: cost, keychain: keychain, cache: cache)
+
+        await vm.refresh()
+
+        XCTAssertEqual(vm.state, .needsCredentials)
+        XCTAssertEqual(keychain.deleteCount, 1, "Bad OpenAI token is wiped")
         XCTAssertEqual(cache.clearCount, 1, "Stale cache is wiped with the token")
         XCTAssertNil(vm.maskedKey)
     }
@@ -404,6 +431,10 @@ private enum TestFixtures {
 
     static func httpError(_ status: Int) -> AnthropicHTTPError {
         AnthropicHTTPError(status: status, body: "test-error")
+    }
+
+    static func openAIHTTPError(_ status: Int) -> OpenAIHTTPError {
+        OpenAIHTTPError(status: status, body: "test-error")
     }
 }
 
