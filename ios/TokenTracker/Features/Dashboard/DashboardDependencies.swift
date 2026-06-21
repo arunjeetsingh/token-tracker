@@ -14,12 +14,21 @@ import Foundation
 /// `defaultsOverride` test seam and is consulted as a static, so threading it
 /// through the initializer would add surface area for no testability gain.
 
-/// Fetches organization identity and month-to-date cost for a given admin key.
+/// Fetches organization identity and month-to-date cost for a given provider key.
 /// The key is passed per call so the view model never has to hold a live client
-/// instance; the live wrapper builds a throwaway `AnthropicClient` each call.
+/// instance; the live wrapper builds a throwaway provider client each call.
 protocol CostProviding {
     func whoami(apiKey: String) async throws -> AnthropicAPI.OrgIdentity
     func monthToDateCost(apiKey: String) async throws -> MTDCost
+}
+
+enum ProviderKind: Equatable {
+    case anthropic
+    case openAI
+}
+
+func providerKind(for apiKey: String) -> ProviderKind {
+    apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sk-ant-") ? .anthropic : .openAI
 }
 
 /// Reads / writes the single Anthropic admin-key slot in the Keychain.
@@ -50,18 +59,27 @@ protocol NotificationPreferenceStoring {
 
 // MARK: - Production implementations
 
-/// Wraps `AnthropicClient`. A fresh client is created per call; construction is
-/// cheap — no network, and the decoder is a shared `static let` on
-/// `AnthropicClient`, so each instance is just a small actor wrapper. The two
-/// calls in `refresh(using:)` still run concurrently via the view model's
+/// Wraps the live Anthropic/OpenAI clients. A fresh client is created per call;
+/// construction is cheap — no network, and decoders are held by the clients — so
+/// the two calls in `refresh(using:)` still run concurrently via the view model's
 /// `async let`.
 struct LiveCostProvider: CostProviding {
     func whoami(apiKey: String) async throws -> AnthropicAPI.OrgIdentity {
-        try await AnthropicClient(apiKey: apiKey).whoami()
+        switch providerKind(for: apiKey) {
+        case .anthropic:
+            try await AnthropicClient(apiKey: apiKey).whoami()
+        case .openAI:
+            try await OpenAIClient(apiKey: apiKey).whoami()
+        }
     }
 
     func monthToDateCost(apiKey: String) async throws -> MTDCost {
-        try await AnthropicClient(apiKey: apiKey).monthToDateCost()
+        switch providerKind(for: apiKey) {
+        case .anthropic:
+            try await AnthropicClient(apiKey: apiKey).monthToDateCost()
+        case .openAI:
+            try await OpenAIClient(apiKey: apiKey).monthToDateCost()
+        }
     }
 }
 

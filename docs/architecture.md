@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Single screen: shows MTD cost for the configured Anthropic org.
+- Single screen: shows MTD cost for the configured provider organization.
 - Pull-to-refresh.
 - Secure credential storage.
 - Offline-friendly: shows last known value with a timestamp.
@@ -12,7 +12,7 @@
 - **SwiftUI** (iOS 17+)
 - **Swift async/await** (no Combine, no RxSwift)
 - **URLSession** for HTTP (no Alamofire)
-- **Keychain Services** for the admin key
+- **Keychain Services** for the provider key
 - **XCTest** for unit tests
 - **swiftlint** for style
 
@@ -28,10 +28,11 @@ TokenTracker.app
 │       ├── DashboardViewModel.swift
 │       └── DashboardState.swift    # idle | loading | loaded(amount, fetchedAt) | error
 ├── Providers/
-│   └── Anthropic/
-│       ├── AnthropicClient.swift   # actor, single method mtdCostUSD()
-│       ├── AnthropicModels.swift   # Codable structs matching API JSON
-│       └── AnthropicEndpoints.swift
+│   ├── Anthropic/
+│   │   ├── AnthropicClient.swift   # actor, org identity + MTD spend
+│   │   └── AnthropicModels.swift   # Codable structs matching API JSON
+│   └── OpenAI/
+│       └── OpenAIClient.swift      # actor, organization costs API adapter
 ├── Credentials/
 │   ├── KeychainStore.swift         # generic Keychain wrapper
 │   └── CredentialPrompt.swift      # paste/edit UI for the admin key
@@ -46,23 +47,26 @@ TokenTracker.app
 
 ## Data flow
 
-1. App launches → reads admin key from Keychain (Face ID gated).
+1. App launches → reads provider key from Keychain (Face ID gated).
 2. If key missing → show paste-in UI.
-3. If key present → `AnthropicClient.mtdCostUSD()` → render.
-4. On error, show the error + a retry button. Don't burn the key.
+3. If key present → classify the provider by key prefix:
+   - `sk-ant-...` → Anthropic Admin API.
+   - anything else → OpenAI organization Costs API.
+4. The live cost provider creates a short-lived client, fetches identity + month-to-date spend, normalizes to shared `MTDCost`, then renders.
+5. On error, show the error + a retry button. Don't burn the key unless the provider reports 401/403.
 
 ## Security
 
-- Admin key in Keychain with attributes:
+- Provider key in Keychain with attributes:
   - `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
   - `kSecAttrSynchronizable = false`
 - App requires Face ID / passcode every cold launch (LocalAuthentication).
 - No logging of the key, ever. Use `os.Logger` with `.private` interpolation.
-- TLS pinned to `api.anthropic.com` cert (Phase 2; MVP uses default ATS).
+- TLS pinning is deferred; MVP uses default ATS for `api.anthropic.com` and `api.openai.com`.
 
 ## Testing strategy
 
-- **Unit tests:** Money conversion, JSON decoding fixtures, pagination logic with mock URLSession.
+- **Unit tests:** Money conversion, JSON decoding fixtures, pagination logic with mock URLSession/MockWebServer, provider routing, and auth-error normalization.
 - **UI tests:** None for MVP — single screen, manually verified.
 - **CI:** `xcodebuild -scheme TokenTracker test -destination 'platform=iOS Simulator,name=iPhone 15'`.
 

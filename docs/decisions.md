@@ -4,6 +4,29 @@ Append-only. Newest at top.
 
 ---
 
+## 2026-06-21 — ADR-014: Provider dispatch supports Anthropic and OpenAI with shared dashboard models
+
+**Context:** TokenCounter started as an Anthropic-only spend viewer. The dashboard state, sparkline, top-model rows, secure credential storage, and offline behavior are provider-agnostic enough to reuse, but the live API adapters differ: Anthropic uses Admin API key headers and cost values in cents, while OpenAI uses bearer auth against the organization Costs API and amount values in USD.
+
+**Decision:** Keep the dashboard/view-model dependency provider-neutral and dispatch live clients from the stored key prefix on both platforms:
+  - `sk-ant-...` keys route to Anthropic.
+  - Other keys route to OpenAI.
+  - Both adapters return the shared `MTDCost` shape with `Money`, daily spend, and line-item/model breakdowns.
+  - 401/403 responses from either provider are normalized as provider-auth errors so stale keys bounce the user back to onboarding consistently.
+
+**Implementation notes:**
+  - Android adds a Retrofit/OkHttp OpenAI client under `providers/openai` and keeps `CostProvider` as the dashboard seam.
+  - iOS adds an `OpenAIClient` actor and keeps `CostProviding` as the dashboard seam.
+  - OpenAI `whoami` is a one-day costs probe because this scope has no cheap org-name endpoint equivalent; the UI uses a generic "OpenAI Organization" identity.
+  - OpenAI costs use epoch-second `start_time`/`end_time`, `bucket_width=1d`, `group_by[]=line_item`, and cursor pagination via `page`/`next_page`.
+
+**Tradeoffs accepted:**
+  - Key-prefix dispatch is intentionally simple. If providers add overlapping key formats later, replace it with an explicit provider picker before saving credentials.
+  - The existing single Keychain/Keystore slot is reused; no migration is needed for the one-provider-at-a-time app model.
+  - OpenAI line items are displayed with lightweight title-casing rather than a curated model-name map because the Costs API may return non-model line items too.
+
+---
+
 ## 2026-05-26 — ADR-013: Android client = native Kotlin + Compose, monorepo, applicationId `studio.maximumimpact.tokencounter`
 
 **Context:** Per ADR-001 (iOS first, then Android), now starting Android development. New domain `maximumimpact.studio` will be the canonical reverse-domain prefix for all future Maximum Impact apps.
