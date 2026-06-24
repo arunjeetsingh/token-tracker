@@ -19,19 +19,12 @@ struct OnboardingView: View {
     @State private var isSubmitting = false
     @State private var submitError: String?
     @State private var revealKey = false
-
-    // Deep-link straight to the Admin Keys page so users don't end up on the
-    // regular API Keys page (which produces `sk-ant-api...` keys, not the
-    // `sk-ant-admin01-...` keys the cost reporting API requires).
-    private let adminKeysURL = URL(string: "https://console.anthropic.com/settings/admin-keys")!  // swiftlint:disable:this force_unwrapping
-    // Deep-link to the Organization settings page so users can confirm they
-    // are on an organizational account (admin keys aren't available on
-    // individual accounts).
-    private let organizationURL = URL(string: "https://console.anthropic.com/settings/organization")!  // swiftlint:disable:this force_unwrapping
+    @State private var selectedProvider: ProviderSetup = .openAI
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                providerPicker
                 header
                 steps
                 pasteCard
@@ -41,7 +34,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 24)
         }
-        .navigationTitle("Connect Anthropic")
+        .navigationTitle("Connect Provider")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: detectClipboard)
         .sheet(item: $safariURL) { wrapper in
@@ -53,6 +46,16 @@ struct OnboardingView: View {
 
     // MARK: - sections
 
+    private var providerPicker: some View {
+        Picker("Provider", selection: $selectedProvider) {
+            ForEach(ProviderSetup.allCases) { provider in
+                Text(provider.displayName).tag(provider)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Usage provider")
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "key.horizontal.fill")
@@ -60,7 +63,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.tint)
             Text("One-time setup")
                 .font(.largeTitle.bold())
-            Text("TokenCounter reads usage from Anthropic's Admin API. We need a one-time admin key — takes about 30 seconds. It stays on this device only.")
+            Text(selectedProvider.introText)
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -70,13 +73,13 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepCard(
                 number: 1,
-                title: "Make sure you have an organization",
-                detail: "Admin keys are only available on **organizational** Anthropic accounts. Tap the button to open the Organization settings page — if it says you're not in one yet, create one before continuing (it's free and takes a minute).",
+                title: selectedProvider.organizationTitle,
+                detail: selectedProvider.organizationDetail,
                 action: AnyView(
                     Button {
-                        safariURL = SafariURL(url: organizationURL)
+                        safariURL = SafariURL(url: selectedProvider.organizationURL)
                     } label: {
-                        Label("Check Organization", systemImage: "building.2")
+                        Label(selectedProvider.organizationButtonTitle, systemImage: "building.2")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -84,13 +87,13 @@ struct OnboardingView: View {
             )
             stepCard(
                 number: 2,
-                title: "Open the Admin Keys page",
-                detail: "Tap the button to open console.anthropic.com inside this app. You'll land directly on the Admin Keys page.",
+                title: selectedProvider.adminKeysTitle,
+                detail: selectedProvider.adminKeysDetail,
                 action: AnyView(
                     Button {
-                        safariURL = SafariURL(url: adminKeysURL)
+                        safariURL = SafariURL(url: selectedProvider.adminKeysURL)
                     } label: {
-                        Label("Open Admin Keys", systemImage: "safari")
+                        Label(selectedProvider.adminKeysButtonTitle, systemImage: "safari")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -98,13 +101,13 @@ struct OnboardingView: View {
             )
             stepCard(
                 number: 3,
-                title: "Create an Admin key",
-                detail: "Tap **+ Create admin key**. Name it “TokenCounter”. (Admin keys are different from regular API keys — they start with `sk-ant-admin01-…` instead of `sk-ant-api03-…`.)"
+                title: selectedProvider.createKeyTitle,
+                detail: selectedProvider.createKeyDetail
             )
             stepCard(
                 number: 4,
                 title: "Copy the key",
-                detail: "Tap **Copy**. Come back here and we'll auto-detect it from your clipboard."
+                detail: selectedProvider.copyKeyDetail
             )
         }
     }
@@ -143,9 +146,9 @@ struct OnboardingView: View {
             HStack(spacing: 8) {
                 Group {
                     if revealKey {
-                        TextField("sk-ant-admin01-…", text: $pendingKey)
+                        TextField(selectedProvider.keyPlaceholder, text: $pendingKey)
                     } else {
-                        SecureField("sk-ant-admin01-…", text: $pendingKey)
+                        SecureField(selectedProvider.keyPlaceholder, text: $pendingKey)
                     }
                 }
                 .textFieldStyle(.roundedBorder)
@@ -263,8 +266,127 @@ struct OnboardingView: View {
     }
 }
 
+private enum ProviderSetup: String, CaseIterable, Identifiable {
+    case openAI
+    case anthropic
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .openAI: return "OpenAI"
+        case .anthropic: return "Anthropic"
+        }
+    }
+
+    var introText: String {
+        switch self {
+        case .openAI:
+            return "TokenCounter reads usage from OpenAI's Usage API. We need a one-time API key — takes about 30 seconds. It stays on this device only."
+        case .anthropic:
+            return "TokenCounter reads usage from Anthropic's Admin API. We need a one-time admin key — takes about 30 seconds. It stays on this device only."
+        }
+    }
+
+    var organizationTitle: String {
+        switch self {
+        case .openAI: return "Make sure billing is enabled"
+        case .anthropic: return "Make sure you have an organization"
+        }
+    }
+
+    var organizationDetail: String {
+        switch self {
+        case .openAI:
+            return "OpenAI usage data is available from your platform organization. Tap the button to check your project and billing settings before continuing."
+        case .anthropic:
+            return "Admin keys are only available on **organizational** Anthropic accounts. Tap the button to open the Organization settings page — if it says you're not in one yet, create one before continuing (it's free and takes a minute)."
+        }
+    }
+
+    var organizationButtonTitle: String {
+        switch self {
+        case .openAI: return "Check OpenAI Settings"
+        case .anthropic: return "Check Organization"
+        }
+    }
+
+    var organizationURL: URL {
+        switch self {
+        case .openAI:
+            return URL(string: "https://platform.openai.com/settings/organization/billing/overview")!  // swiftlint:disable:this force_unwrapping
+        case .anthropic:
+            return URL(string: "https://console.anthropic.com/settings/organization")!  // swiftlint:disable:this force_unwrapping
+        }
+    }
+
+    var adminKeysTitle: String {
+        switch self {
+        case .openAI: return "Open the OpenAI API Keys page"
+        case .anthropic: return "Open the Admin Keys page"
+        }
+    }
+
+    var adminKeysDetail: String {
+        switch self {
+        case .openAI:
+            return "Tap the button to open platform.openai.com inside this app. You'll land directly on the API Keys page."
+        case .anthropic:
+            return "Tap the button to open console.anthropic.com inside this app. You'll land directly on the Admin Keys page."
+        }
+    }
+
+    var adminKeysButtonTitle: String {
+        switch self {
+        case .openAI: return "Open OpenAI API Keys"
+        case .anthropic: return "Open Admin Keys"
+        }
+    }
+
+    var adminKeysURL: URL {
+        switch self {
+        case .openAI:
+            return URL(string: "https://platform.openai.com/api-keys")!  // swiftlint:disable:this force_unwrapping
+        case .anthropic:
+            return URL(string: "https://console.anthropic.com/settings/admin-keys")!  // swiftlint:disable:this force_unwrapping
+        }
+    }
+
+    var createKeyTitle: String {
+        switch self {
+        case .openAI: return "Create an API key"
+        case .anthropic: return "Create an Admin key"
+        }
+    }
+
+    var createKeyDetail: String {
+        switch self {
+        case .openAI:
+            return "Tap **Create new secret key**. Name it “TokenCounter”. OpenAI keys usually start with `sk-proj-…` or `sk-…`."
+        case .anthropic:
+            return "Tap **+ Create admin key**. Name it “TokenCounter”. (Admin keys are different from regular API keys — they start with `sk-ant-admin…` instead of `sk-ant-api…`.)"
+        }
+    }
+
+    var copyKeyDetail: String {
+        switch self {
+        case .openAI:
+            return "Tap **Copy**. Come back here and we'll auto-detect it from your clipboard."
+        case .anthropic:
+            return "Tap **Copy**. Come back here and we'll auto-detect it from your clipboard."
+        }
+    }
+
+    var keyPlaceholder: String {
+        switch self {
+        case .openAI: return "sk-proj-…"
+        case .anthropic: return "sk-ant-admin…"
+        }
+    }
+}
+
 /// Identifiable wrapper around `URL` so we can drive `.sheet(item:)` from any
-/// of the Anthropic Console deep links the onboarding flow exposes.
+/// of the provider setup deep links the onboarding flow exposes.
 struct SafariURL: Identifiable {
     let url: URL
     var id: String { url.absoluteString }

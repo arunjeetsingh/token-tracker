@@ -11,23 +11,34 @@ struct SettingsView: View {
     var onSetLimit: (Int64) -> Void
     var onClearLimit: () -> Void
     var onAlertEnabledChange: (Bool) -> Void
+    var onConnect: (String) async -> Result<Void, Error>
     var onDisconnect: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var showConfirm = false
     @State private var showLimitEditor = false
+    @State private var showCredentialSetup = false
     @State private var isWorking = false
 
-    private static let limitsURL = URL(string: "https://platform.claude.com/settings/limits")!
-    private static let billingURL = URL(string: "https://platform.claude.com/settings/billing")!
+    private static let anthropicLimitsURL = URL(string: "https://platform.claude.com/settings/limits")!
+    private static let anthropicBillingURL = URL(string: "https://platform.claude.com/settings/billing")!
+    private static let openAILimitsURL = URL(string: "https://platform.openai.com/settings/organization/limits")!
+    private static let openAIBillingURL = URL(string: "https://platform.openai.com/settings/organization/billing/overview")!
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Anthropic Admin key") {
+                Section("Provider API key") {
+                    LabeledContent("Provider", value: providerName)
                     LabeledContent("Organization", value: orgName ?? "—")
-                    LabeledContent("Admin key", value: maskedKey ?? "Not set")
+                    LabeledContent("API key", value: maskedKey ?? "Not set")
                         .font(.body.monospaced())
+
+                    Button {
+                        showCredentialSetup = true
+                    } label: {
+                        Label(maskedKey == nil ? "Add API key" : "Add or replace API key", systemImage: "key")
+                    }
                 }
 
                 Section {
@@ -41,21 +52,21 @@ struct SettingsView: View {
                     Toggle("Alert me at 90% of limit", isOn: alertBinding)
                         .disabled(spendLimitCents == nil)
 
-                    Link("Change limit in Console", destination: Self.limitsURL)
+                    Link("Change limit in provider console", destination: limitsURL)
                 } header: {
                     Text("Spend limit")
                 } footer: {
                     Text(spendLimitCents == nil
                         ? "Set a monthly limit to track your spend and enable 90% alerts."
-                        : "Limit is tracked on this device — editing here doesn't change your actual Anthropic limit (do that in the Console). Alerts check in the background and notify you once when spend reaches 90%.")
+                        : "Limit is tracked on this device — editing here doesn't change your actual provider limit. Alerts check in the background and notify you once when spend reaches 90%.")
                 }
 
                 Section {
-                    Link("Credit balance & auto-reload", destination: Self.billingURL)
+                    Link("Credit balance & auto-reload", destination: billingURL)
                 } header: {
                     Text("Billing")
                 } footer: {
-                    Text("Credit balance and auto-reload live in the Anthropic Console; the API doesn't expose them.")
+                    Text("Billing and auto-reload settings live in the provider console; the usage APIs don't expose them.")
                 }
 
                 Section {
@@ -64,17 +75,17 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             if isWorking { ProgressView() }
-                            Text("Remove Admin key")
+                            Text("Remove API key")
                         }
                     }
                     .disabled(isWorking || maskedKey == nil)
                 } footer: {
-                    Text("Removes the admin key from this device's Keychain. You'll need to paste it again to reconnect.")
+                    Text("Removes the API key from this device's Keychain. You'll need to paste it again to reconnect.")
                 }
 
                 Section("About") {
                     LabeledContent("App", value: appVersion)
-                    Link("Anthropic Admin Keys", destination: URL(string: "https://console.anthropic.com/settings/admin-keys")!)
+                    Link("Provider API Keys", destination: providerKeysURL)
                 }
             }
             .navigationTitle("Settings")
@@ -91,8 +102,24 @@ struct SettingsView: View {
                     onClear: onClearLimit
                 )
             }
+            .sheet(isPresented: $showCredentialSetup) {
+                NavigationStack {
+                    OnboardingView(onSubmit: { key in
+                        let result = await onConnect(key)
+                        if case .success = result {
+                            showCredentialSetup = false
+                        }
+                        return result
+                    })
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Cancel") { showCredentialSetup = false }
+                        }
+                    }
+                }
+            }
             .confirmationDialog(
-                "Remove the saved Admin key?",
+                "Remove the saved API key?",
                 isPresented: $showConfirm,
                 titleVisibility: .visible
             ) {
@@ -106,8 +133,38 @@ struct SettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Your admin key will be removed from this device. The key itself is not revoked — you can revoke it in the Anthropic Console.")
+                Text("Your API key will be removed from this device. The key itself is not revoked — you can revoke it in the provider console.")
             }
+        }
+    }
+
+    private var providerName: String {
+        switch providerKind {
+        case .anthropic: return "Anthropic"
+        case .openAI: return "OpenAI"
+        case .none: return "Not connected"
+        }
+    }
+
+    private var providerKind: ProviderKind? {
+        guard let maskedKey else { return nil }
+        return maskedKey.hasPrefix("sk-ant-") ? .anthropic : .openAI
+    }
+
+    private var limitsURL: URL {
+        providerKind == .anthropic ? Self.anthropicLimitsURL : Self.openAILimitsURL
+    }
+
+    private var billingURL: URL {
+        providerKind == .anthropic ? Self.anthropicBillingURL : Self.openAIBillingURL
+    }
+
+    private var providerKeysURL: URL {
+        switch providerKind {
+        case .anthropic:
+            return URL(string: "https://console.anthropic.com/settings/admin-keys")!
+        case .openAI, .none:
+            return URL(string: "https://platform.openai.com/api-keys")!
         }
     }
 
