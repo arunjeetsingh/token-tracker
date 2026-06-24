@@ -1,9 +1,10 @@
 # token-tracker
 
 TokenCounter — track token burn and token costs for popular cloud LLM platforms
-(Claude today; OpenAI/Gemini next). Native iOS **and** Android, bring-your-own-key,
-privacy-first: your admin key stays on-device and is never sent anywhere except
-`api.anthropic.com`. No account, no server, no analytics.
+(Claude and OpenAI today; Gemini next). Native iOS **and** Android, bring-your-own-key,
+privacy-first: your provider key stays on-device and is never sent anywhere except
+that provider's API (`api.anthropic.com` or `api.openai.com`). No account, no server,
+no analytics.
 
 ## Status
 
@@ -21,14 +22,14 @@ API, with a per-model breakdown, a 30-day trend, and a spend-limit gauge + 90% a
 
 - **Phase 1 (MVP):** ✅ iOS app, Claude platform only, month-to-date cost from the Anthropic Usage & Cost Admin API.
 - **Phase 2:** ✅ Per-model breakdown, 30-day spend sparkline, and a spend-limit gauge with a 90%-of-limit alert.
-- **Phase 3:** ⏳ OpenAI + Gemini support — next up; OpenAI first (see [api-research.md](docs/api-research.md)).
+- **Phase 3:** 🚧 OpenAI ✅ (organization Costs API live on both apps, see [ADR-014](docs/decisions.md)); Gemini next (see [api-research.md](docs/api-research.md)).
 - **Phase 4:** ✅ Android app (native Kotlin + Jetpack Compose), at full feature parity with iOS.
 - **Phase 5 (maybe):** Web app — undecided.
 
 ### Highlights so far
 
 - **Two native apps, full parity.** SwiftUI on iOS, Jetpack Compose on Android — same dashboard, same features, same privacy posture.
-- **Live data, on-device only.** Reads straight from Anthropic's Cost & Usage API; finalized month-to-date spend plus a token-priced estimate of today.
+- **Live data, on-device only.** Reads straight from the provider's cost API — Anthropic's Usage & Cost Admin API or OpenAI's organization Costs API — for finalized month-to-date spend (plus a token-priced estimate of today on Anthropic). Provider is auto-detected from the key prefix.
 - **Spend limit + alert.** A local monthly target with a gauge (orange at 80%, red over 100%) and an opt-in once-a-month 90% notification. Console deep-links for the real billing limit/credit/auto-reload.
 - **Open source.** Public repo, MIT-spirited — audit how your key is handled, file issues, send PRs.
 - **Automated release pipelines.** CI ships signed builds to TestFlight (iOS) and Google Play internal testing (Android), with auto patch-version bumps.
