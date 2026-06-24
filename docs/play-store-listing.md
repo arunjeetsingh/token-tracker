@@ -35,7 +35,7 @@ Mirrors `app-store-listing.md` (iOS) but adapted to Play's fields, limits, and f
 > • Breakdown by model
 > • A quick visual sense of whether you're under, on track, or over your usual monthly burn
 >
-> TokenCounter does not have a server. The app talks directly from your phone to api.anthropic.com using your key. Nothing about your account, key, usage, or cost ever passes through any third party — including us.
+> TokenCounter does not have a server. The app talks directly from your phone to your provider's API (api.anthropic.com or api.openai.com) using your key. Nothing about your account, key, usage, or cost ever passes through any third party — including us.
 >
 > WHY YOU'LL LIKE IT
 >
@@ -138,12 +138,12 @@ This is Play's analog to iOS App Privacy. Declare:
 
 Justification (same logic as iOS "Data Not Collected"):
 - No data is transmitted off-device to us or any third party we work with.
-- The Anthropic Admin API key is stored only on-device (Android Keystore) and sent only to `api.anthropic.com`, which is the user's chosen service provider, not our backend.
+- The provider API key is stored only on-device (Android Keystore) and sent only to the user's chosen provider API (`api.anthropic.com` or `api.openai.com`), not our backend.
 - No analytics, crash reporting, ads, or tracking SDKs.
 
 If the form forces a "data transferred" question about the API key:
 - The key is **not collected by us**. It is end-to-end between the user's device and Anthropic.
-- **Encryption in transit:** Yes (HTTPS/TLS to api.anthropic.com).
+- **Encryption in transit:** Yes (HTTPS/TLS to api.anthropic.com / api.openai.com).
 - **Data deletion:** User can delete on-device key via Settings → Disconnect. No server-side data exists to delete.
 
 **Security practices:**

@@ -32,7 +32,7 @@ Source of truth for everything we copy/paste into App Store Connect.
 > • Breakdown by model
 > • Quick visual sense of whether you're under, on track, or over your usual monthly burn
 >
-> TokenCounter does not have a server. The app talks directly from your iPhone to api.anthropic.com using your key. Nothing about your account, key, usage, or cost ever passes through any third party — including us.
+> TokenCounter does not have a server. The app talks directly from your iPhone to your provider's API (api.anthropic.com or api.openai.com) using your key. Nothing about your account, key, usage, or cost ever passes through any third party — including us.
 >
 > WHY YOU'LL LIKE IT
 >
@@ -96,7 +96,7 @@ We do not collect:
 
 - Contact Info, Health & Fitness, Financial Info, Location, Sensitive Info, Contacts, User Content, Browsing History, Search History, Identifiers, Purchases, Usage Data, Diagnostics, or Other Data.
 
-The Anthropic Admin API key is **stored only on the user's device** (iOS Keychain) and **sent only to api.anthropic.com**. Under App Privacy guidelines, data that is not transmitted off-device and not received by a third party we work with is not "collected."
+The provider API key is **stored only on the user's device** (iOS Keychain) and **sent only to that provider's API** (`api.anthropic.com` or `api.openai.com`). Under App Privacy guidelines, data that is not transmitted off-device and not received by a third party we work with is not "collected."
 
 ## Export compliance
 
