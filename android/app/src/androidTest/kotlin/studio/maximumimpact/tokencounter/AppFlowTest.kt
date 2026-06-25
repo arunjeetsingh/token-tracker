@@ -70,11 +70,11 @@ class AppFlowTest {
         // Open settings and disconnect.
         composeTestRule.onNodeWithContentDescription("Settings").performClick()
         composeTestRule.waitUntil(timeoutMillis = 5_000) {
-            composeTestRule.onAllNodesWithText("Remove Admin key").fetchSemanticsNodes().isNotEmpty()
+            composeTestRule.onAllNodesWithText("Remove API key").fetchSemanticsNodes().isNotEmpty()
         }
         // The settings sheet scrolls; the destructive row sits below the new
         // spend-limit / billing sections, so scroll it into view before tapping.
-        composeTestRule.onNodeWithText("Remove Admin key").performScrollTo().performClick()
+        composeTestRule.onNodeWithText("Remove API key").performScrollTo().performClick()
         // Confirmation dialog → Disconnect.
         composeTestRule.onNodeWithText("Disconnect").performClick()
 

@@ -11,7 +11,7 @@ enum AnthropicKeyValidation {
     /// Loose prefix used by clipboard auto-detect. The API call itself will fail
     /// fast if a key is malformed, revoked, or lacks the required scopes, and
     /// we'll surface the error.
-    static let clipboardPrefixes = ["sk-ant-admin01-", "sk-ant-api03-", "sk-ant-", "sk-proj-", "sk-"]
+    static let clipboardPrefixes = ["***", "***", "sk-ant-", "sk-admin-", "sk-proj-", "sk-"]
 
     /// Minimum total length we'll even consider — keeps obvious garbage out.
     static let minLength = 32

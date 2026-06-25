@@ -42,11 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import studio.maximumimpact.tokencounter.core.Money
+import studio.maximumimpact.tokencounter.features.providers.ProviderSetup
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
 
-private const val ADMIN_KEYS_URL = "https://console.anthropic.com/settings/admin-keys"
-private const val LIMITS_URL = "https://platform.claude.com/settings/limits"
-private const val BILLING_URL = "https://platform.claude.com/settings/billing"
 
 /**
  * Settings modal. Kotlin sibling of the iOS `SettingsView` (presented as a
@@ -63,6 +61,7 @@ fun SettingsSheet(
     alertEnabled: Boolean,
     onEditLimit: () -> Unit,
     onAlertEnabledChange: (Boolean) -> Unit,
+    onAddOrReplaceKey: () -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -72,6 +71,7 @@ fun SettingsSheet(
     var showConfirm by remember { mutableStateOf(false) }
 
     val limitSet = spendLimitCents != null
+    val provider = ProviderSetup.fromApiKey(maskedKey) ?: ProviderSetup.OPENAI
 
     // POST_NOTIFICATIONS is requested only when the user turns alerts on.
     val notificationPermission = rememberLauncherForActivityResult(
@@ -114,10 +114,12 @@ fun SettingsSheet(
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            // Anthropic Admin key section.
-            SettingsSection(title = "ANTHROPIC ADMIN KEY") {
+            // Provider API key section.
+            SettingsSection(title = "PROVIDER API KEY") {
+                LabeledRow(label = "Provider", value = provider.displayName)
                 LabeledRow(label = "Organization", value = orgName)
-                LabeledRow(label = "Admin key", value = maskedKey, monospace = true)
+                LabeledRow(label = "API key", value = maskedKey, monospace = true)
+                ActionRow(label = "Add or replace API key", onClick = onAddOrReplaceKey)
             }
 
             // Spend limit (local tracking target).
@@ -134,15 +136,15 @@ fun SettingsSheet(
                         enabled = limitSet,
                         onCheckedChange = onToggleAlert
                     )
-                    ActionRow(label = "Change limit in Console", isLink = true) {
-                        uriHandler.openUri(LIMITS_URL)
+                    ActionRow(label = "Change limit in provider console", isLink = true) {
+                        uriHandler.openUri(provider.limitsUrl)
                     }
                 }
                 Text(
                     text = if (limitSet) {
                         "Limit is tracked on this device — editing here doesn't change your " +
-                            "actual Anthropic limit (do that in the Console). Alerts check in the " +
-                            "background and notify you once when spend reaches 90%."
+                            "actual provider limit. Alerts check in the background and notify you " +
+                            "once when spend reaches 90%."
                     } else {
                         "Set a monthly limit to track your spend and enable 90% alerts."
                     },
@@ -155,12 +157,12 @@ fun SettingsSheet(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SettingsSection(title = "BILLING") {
                     ActionRow(label = "Credit balance & auto-reload", isLink = true) {
-                        uriHandler.openUri(BILLING_URL)
+                        uriHandler.openUri(provider.billingUrl)
                     }
                 }
                 Text(
-                    text = "Credit balance and auto-reload live in the Anthropic Console; " +
-                        "the API doesn't expose them.",
+                    text = "Credit balance and auto-reload live in the provider console; " +
+                        "the usage APIs don't expose them.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -169,7 +171,7 @@ fun SettingsSheet(
             // Destructive section.
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "Remove Admin key",
+                    text = "Remove API key",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier
@@ -180,7 +182,7 @@ fun SettingsSheet(
                         .padding(vertical = 12.dp, horizontal = 14.dp)
                 )
                 Text(
-                    text = "Removes the admin key from this device. " +
+                    text = "Removes the API key from this device. " +
                         "You'll need to paste it again to reconnect.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -191,12 +193,12 @@ fun SettingsSheet(
             SettingsSection(title = "ABOUT") {
                 LabeledRow(label = "App version", value = appVersion)
                 Text(
-                    text = "Anthropic Admin Keys",
+                    text = "Provider API Keys",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { uriHandler.openUri(ADMIN_KEYS_URL) }
+                        .clickable { uriHandler.openUri(provider.adminKeysUrl) }
                         .padding(vertical = 12.dp, horizontal = 14.dp)
                 )
             }
@@ -206,11 +208,11 @@ fun SettingsSheet(
     if (showConfirm) {
         AlertDialog(
             onDismissRequest = { showConfirm = false },
-            title = { Text("Remove the saved Admin key?") },
+            title = { Text("Remove the saved API key?") },
             text = {
                 Text(
-                    "Your admin key will be removed from this device. The key " +
-                        "itself is not revoked — you can revoke it in the Anthropic Console."
+                    "Your API key will be removed from this device. The key itself " +
+                        "is not revoked — you can revoke it in the provider console."
                 )
             },
             confirmButton = {
@@ -359,9 +361,10 @@ private fun SettingsSheetPreview() {
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text("Settings", style = MaterialTheme.typography.titleLarge)
-            SettingsSection(title = "ANTHROPIC ADMIN KEY") {
+            SettingsSection(title = "PROVIDER API KEY") {
+                LabeledRow(label = "Provider", value = "OpenAI")
                 LabeledRow(label = "Organization", value = "Personal")
-                LabeledRow(label = "Admin key", value = "sk-ant-…w22", monospace = true)
+                LabeledRow(label = "API key", value = "sk-admin-…w22", monospace = true)
             }
         }
     }

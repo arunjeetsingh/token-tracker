@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,10 +46,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import studio.maximumimpact.tokencounter.credentials.AnthropicKeyValidation
+import studio.maximumimpact.tokencounter.features.providers.ProviderSetup
 import studio.maximumimpact.tokencounter.ui.theme.TokenCounterTheme
-
-private const val ADMIN_KEYS_URL = "https://console.anthropic.com/settings/admin-keys"
-private const val ORG_URL = "https://console.anthropic.com/settings/organization"
 
 /** Stable identifiers for UI tests (text fields are awkward to target by text). */
 object OnboardingTestTags {
@@ -72,6 +72,8 @@ fun OnboardingScreen(
     val uriHandler = LocalUriHandler.current
     var key by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
+    var selectedProvider by remember { mutableStateOf(ProviderSetup.OPENAI) }
+    val inferredProvider = remember(key) { ProviderSetup.fromApiKey(key) }
 
     Column(
         modifier = modifier
@@ -81,6 +83,11 @@ fun OnboardingScreen(
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        ProviderPicker(
+            selectedProvider = selectedProvider,
+            onSelectedProviderChange = { selectedProvider = it }
+        )
+
         // Header.
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(
@@ -95,9 +102,7 @@ fun OnboardingScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-                text = "TokenCounter reads usage from Anthropic's Admin API. " +
-                    "We need a one-time admin key — takes about 30 seconds. " +
-                    "It stays on this device only.",
+                text = selectedProvider.introText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -106,32 +111,31 @@ fun OnboardingScreen(
         // Step cards.
         StepCard(
             number = 1,
-            title = "Make sure you have an organization",
-            detail = "Admin keys live under an Anthropic organization. " +
-                "If you're on a personal account you may need to create one."
+            title = selectedProvider.organizationTitle,
+            detail = selectedProvider.organizationDetail
         ) {
-            OutlinedButton(onClick = { uriHandler.openUri(ORG_URL) }) {
-                Text("Check Organization")
+            OutlinedButton(onClick = { uriHandler.openUri(selectedProvider.organizationUrl) }) {
+                Text(selectedProvider.organizationButtonTitle)
             }
         }
         StepCard(
             number = 2,
-            title = "Open the Admin Keys page",
-            detail = "Open the Anthropic Console to manage admin keys."
+            title = selectedProvider.adminKeysTitle,
+            detail = selectedProvider.adminKeysDetail
         ) {
-            Button(onClick = { uriHandler.openUri(ADMIN_KEYS_URL) }) {
-                Text("Open Admin Keys")
+            Button(onClick = { uriHandler.openUri(selectedProvider.adminKeysUrl) }) {
+                Text(selectedProvider.adminKeysButtonTitle)
             }
         }
         StepCard(
             number = 3,
-            title = "Create an Admin key",
-            detail = "Use \"Create Key\". Give it a name like \"TokenCounter\"."
+            title = selectedProvider.createKeyTitle,
+            detail = selectedProvider.createKeyDetail
         )
         StepCard(
             number = 4,
             title = "Copy the key",
-            detail = "It starts with sk-ant-admin01-…. Paste it below."
+            detail = selectedProvider.copyKeyDetail
         )
 
         // Paste card.
@@ -168,6 +172,14 @@ fun OnboardingScreen(
                     .fillMaxWidth()
                     .testTag(OnboardingTestTags.KEY_FIELD)
             )
+            if (inferredProvider != null && inferredProvider != selectedProvider) {
+                Text(
+                    text = "This key looks like a ${inferredProvider.displayName} key. " +
+                        "TokenCounter will use the key prefix as the source of truth.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
             if (submitError != null) {
                 Text(
                     text = submitError,
@@ -196,6 +208,30 @@ fun OnboardingScreen(
                 icon = Icons.Filled.Info,
                 text = "Never synced to the cloud. You can disconnect anytime in Settings."
             )
+        }
+    }
+}
+
+@Composable
+private fun ProviderPicker(
+    selectedProvider: ProviderSetup,
+    onSelectedProviderChange: (ProviderSetup) -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        ProviderSetup.values().forEach { provider ->
+            val selected = provider == selectedProvider
+            val colors = if (selected) {
+                ButtonDefaults.buttonColors()
+            } else {
+                ButtonDefaults.outlinedButtonColors()
+            }
+            OutlinedButton(
+                onClick = { onSelectedProviderChange(provider) },
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(provider.displayName)
+            }
         }
     }
 }

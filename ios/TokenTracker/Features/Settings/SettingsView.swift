@@ -148,7 +148,7 @@ struct SettingsView: View {
 
     private var providerKind: ProviderKind? {
         guard let maskedKey else { return nil }
-        return maskedKey.hasPrefix("sk-ant-") ? .anthropic : .openAI
+        return TokenTracker.providerKind(for: maskedKey)
     }
 
     private var limitsURL: URL {
@@ -164,7 +164,7 @@ struct SettingsView: View {
         case .anthropic:
             return URL(string: "https://console.anthropic.com/settings/admin-keys")!
         case .openAI, .none:
-            return URL(string: "https://platform.openai.com/api-keys")!
+            return URL(string: "https://platform.openai.com/settings/organization/admin-keys")!
         }
     }
 

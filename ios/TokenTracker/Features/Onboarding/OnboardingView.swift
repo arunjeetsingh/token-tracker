@@ -19,7 +19,7 @@ struct OnboardingView: View {
     @State private var isSubmitting = false
     @State private var submitError: String?
     @State private var revealKey = false
-    @State private var selectedProvider: ProviderSetup = .anthropic
+    @State private var selectedProvider: ProviderSetup = .openAI
 
     var body: some View {
         ScrollView {
@@ -164,6 +164,12 @@ struct OnboardingView: View {
                 .accessibilityLabel(revealKey ? "Hide key" : "Show key")
             }
 
+            if let providerMismatchWarning {
+                Text(providerMismatchWarning)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+
             if let submitError {
                 Text(submitError)
                     .font(.footnote)
@@ -202,6 +208,13 @@ struct OnboardingView: View {
 
     private var trimmedKey: String {
         pendingKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var providerMismatchWarning: String? {
+        guard let inferredProvider = ProviderSetup(apiKey: trimmedKey), inferredProvider != selectedProvider else {
+            return nil
+        }
+        return "This key looks like an \(inferredProvider.displayName) key. TokenCounter will use the key prefix as the source of truth."
     }
 
     private var canSubmit: Bool {
@@ -272,6 +285,17 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    init?(apiKey: String) {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("sk-ant-") {
+            self = .anthropic
+        } else if trimmed.hasPrefix("sk-admin-") || trimmed.hasPrefix("sk-proj-") || trimmed.hasPrefix("sk-") {
+            self = .openAI
+        } else {
+            return nil
+        }
+    }
+
     var displayName: String {
         switch self {
         case .openAI: return "OpenAI"
@@ -282,7 +306,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
     var introText: String {
         switch self {
         case .openAI:
-            return "TokenCounter reads usage from OpenAI's Usage API. We need a one-time API key — takes about 30 seconds. It stays on this device only."
+            return "TokenCounter reads usage from OpenAI's organization Costs API. We need a one-time admin key — takes about 30 seconds. It stays on this device only."
         case .anthropic:
             return "TokenCounter reads usage from Anthropic's Admin API. We need a one-time admin key — takes about 30 seconds. It stays on this device only."
         }
@@ -298,7 +322,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
     var organizationDetail: String {
         switch self {
         case .openAI:
-            return "OpenAI usage data is available from your platform organization. Tap the button to check your project and billing settings before continuing."
+            return "OpenAI usage data is available from your platform organization. Tap the button to check your organization billing settings before continuing."
         case .anthropic:
             return "Admin keys are only available on **organizational** Anthropic accounts. Tap the button to open the Organization settings page — if it says you're not in one yet, create one before continuing (it's free and takes a minute)."
         }
@@ -322,7 +346,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
 
     var adminKeysTitle: String {
         switch self {
-        case .openAI: return "Open the OpenAI API Keys page"
+        case .openAI: return "Open the OpenAI Admin Keys page"
         case .anthropic: return "Open the Admin Keys page"
         }
     }
@@ -330,7 +354,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
     var adminKeysDetail: String {
         switch self {
         case .openAI:
-            return "Tap the button to open platform.openai.com inside this app. You'll land directly on the API Keys page."
+            return "Tap the button to open platform.openai.com inside this app. You'll land directly on the organization Admin Keys page."
         case .anthropic:
             return "Tap the button to open console.anthropic.com inside this app. You'll land directly on the Admin Keys page."
         }
@@ -338,7 +362,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
 
     var adminKeysButtonTitle: String {
         switch self {
-        case .openAI: return "Open OpenAI API Keys"
+        case .openAI: return "Open OpenAI Admin Keys"
         case .anthropic: return "Open Admin Keys"
         }
     }
@@ -346,7 +370,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
     var adminKeysURL: URL {
         switch self {
         case .openAI:
-            return URL(string: "https://platform.openai.com/api-keys")!  // swiftlint:disable:this force_unwrapping
+            return URL(string: "https://platform.openai.com/settings/organization/admin-keys")!  // swiftlint:disable:this force_unwrapping
         case .anthropic:
             return URL(string: "https://console.anthropic.com/settings/admin-keys")!  // swiftlint:disable:this force_unwrapping
         }
@@ -354,7 +378,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
 
     var createKeyTitle: String {
         switch self {
-        case .openAI: return "Create an API key"
+        case .openAI: return "Create an Admin key"
         case .anthropic: return "Create an Admin key"
         }
     }
@@ -362,7 +386,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
     var createKeyDetail: String {
         switch self {
         case .openAI:
-            return "Tap **Create new secret key**. Name it “TokenCounter”. OpenAI keys usually start with `sk-proj-…` or `sk-…`."
+            return "Create an organization admin key. Name it “TokenCounter”. (Admin keys are different from regular project keys — they start with `sk-admin…` instead of `sk-proj…`.)"
         case .anthropic:
             return "Tap **+ Create admin key**. Name it “TokenCounter”. (Admin keys are different from regular API keys — they start with `sk-ant-admin…` instead of `sk-ant-api…`.)"
         }
@@ -379,7 +403,7 @@ private enum ProviderSetup: String, CaseIterable, Identifiable {
 
     var keyPlaceholder: String {
         switch self {
-        case .openAI: return "sk-proj-…"
+        case .openAI: return "sk-admin…"
         case .anthropic: return "sk-ant-admin…"
         }
     }

@@ -129,6 +129,10 @@ fun TokenCounterApp() {
                     showLimitDialog = true
                 },
                 onAlertEnabledChange = { viewModel.setAlertEnabled(it) },
+                onAddOrReplaceKey = {
+                    showSettings = false
+                    viewModel.disconnect()
+                },
                 onDisconnect = {
                     showSettings = false
                     viewModel.disconnect()
