@@ -116,6 +116,8 @@ enum class ProviderSetup(val providerKind: ProviderKind) {
         }
 
     companion object {
+        val DEFAULT = ANTHROPIC
+
         fun fromProviderKind(kind: ProviderKind): ProviderSetup = when (kind) {
             ProviderKind.ANTHROPIC -> ANTHROPIC
             ProviderKind.OPENAI -> OPENAI

@@ -71,7 +71,7 @@ fun SettingsSheet(
     var showConfirm by remember { mutableStateOf(false) }
 
     val limitSet = spendLimitCents != null
-    val provider = ProviderSetup.fromApiKey(maskedKey) ?: ProviderSetup.OPENAI
+    val provider = ProviderSetup.fromApiKey(maskedKey) ?: ProviderSetup.DEFAULT
 
     // POST_NOTIFICATIONS is requested only when the user turns alerts on.
     val notificationPermission = rememberLauncherForActivityResult(

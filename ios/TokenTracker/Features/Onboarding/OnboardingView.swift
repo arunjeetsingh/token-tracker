@@ -19,7 +19,7 @@ struct OnboardingView: View {
     @State private var isSubmitting = false
     @State private var submitError: String?
     @State private var revealKey = false
-    @State private var selectedProvider: ProviderSetup = .openAI
+    @State private var selectedProvider: ProviderSetup = ProviderSetup.defaultSelection
 
     var body: some View {
         ScrollView {
@@ -279,9 +279,11 @@ struct OnboardingView: View {
     }
 }
 
-private enum ProviderSetup: String, CaseIterable, Identifiable {
+enum ProviderSetup: String, CaseIterable, Identifiable {
     case anthropic
     case openAI
+
+    static let defaultSelection: ProviderSetup = .anthropic
 
     var id: String { rawValue }
 

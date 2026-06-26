@@ -12,6 +12,11 @@ final class AnthropicKeyValidationTests: XCTestCase {
         XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
     }
 
+    func testOpenAIAdminKeyIsRecognized() {
+        let key = "sk-admin-" + String(repeating: "A", count: 40)
+        XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
+    }
+
     func testOpenAILegacyKeyIsRecognized() {
         let key = "sk-" + String(repeating: "A", count: 40)
         XCTAssertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))

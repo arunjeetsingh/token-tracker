@@ -47,13 +47,14 @@ TokenTracker.app
 
 ## Data flow
 
-1. App launches → reads provider key from Keychain (Face ID gated).
-2. If key missing → show paste-in UI.
+1. App launches → reads provider key from Keychain/Keystore (Face ID/passcode gated on iOS).
+2. If key missing → show the provider-key setup UI. Anthropic remains the default selected provider so existing users land on the original setup path; users can switch to OpenAI before opening console links.
 3. If key present → classify the provider by key prefix:
    - `sk-ant-...` → Anthropic Admin API.
-   - anything else → OpenAI organization Costs API.
-4. The live cost provider creates a short-lived client, fetches identity + month-to-date spend, normalizes to shared `MTDCost`, then renders.
-5. On error, show the error + a retry button. Don't burn the key unless the provider reports 401/403.
+   - `sk-admin-...`, `sk-proj-...`, or legacy `sk-...` → OpenAI organization Costs API.
+4. Clipboard auto-detect uses the same supported-prefix list so both Anthropic and OpenAI keys can be offered as paste suggestions, while the saved key prefix remains the source of truth if it disagrees with the picker.
+5. The live cost provider creates a short-lived client, fetches identity + month-to-date spend, normalizes to shared `MTDCost`, then renders.
+6. On error, show the error + a retry button. Don't burn the key unless the provider reports 401/403.
 
 ## Security
 
@@ -66,7 +67,7 @@ TokenTracker.app
 
 ## Testing strategy
 
-- **Unit tests:** Money conversion, JSON decoding fixtures, pagination logic with mock URLSession/MockWebServer, provider routing, and auth-error normalization.
+- **Unit tests:** Money conversion, JSON decoding fixtures, pagination logic with mock URLSession/MockWebServer, provider routing/default setup selection, and auth-error normalization.
 - **UI tests:** None for MVP — single screen, manually verified.
 - **CI:** `xcodebuild -scheme TokenTracker test -destination 'platform=iOS Simulator,name=iPhone 15'`.
 

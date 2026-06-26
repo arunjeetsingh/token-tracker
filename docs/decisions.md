@@ -10,7 +10,7 @@ Append-only. Newest at top.
 
 **Decision:** Keep the dashboard/view-model dependency provider-neutral and dispatch live clients from the stored key prefix on both platforms:
   - `sk-ant-...` keys route to Anthropic.
-  - Other keys route to OpenAI.
+  - OpenAI organization admin keys (`sk-admin-...`), project keys (`sk-proj-...`), and legacy `sk-...` keys route to OpenAI.
   - Both adapters return the shared `MTDCost` shape with `Money`, daily spend, and line-item/model breakdowns.
   - 401/403 responses from either provider are normalized as provider-auth errors so stale keys bounce the user back to onboarding consistently.
 
@@ -19,6 +19,7 @@ Append-only. Newest at top.
   - iOS adds an `OpenAIClient` actor and keeps `CostProviding` as the dashboard seam.
   - OpenAI `whoami` is a one-day costs probe because this scope has no cheap org-name endpoint equivalent; the UI uses a generic "OpenAI Organization" identity.
   - OpenAI costs use epoch-second `start_time`/`end_time`, `bucket_width=1d`, `group_by[]=line_item`, and cursor pagination via `page`/`next_page`.
+  - Provider-key setup is provider-neutral on both platforms, but defaults to Anthropic to preserve the existing-user path; unit tests lock the default and prefix-routing behavior.
 
 **Tradeoffs accepted:**
   - Key-prefix dispatch is intentionally simple. If providers add overlapping key formats later, replace it with an explicit provider picker before saving credentials.

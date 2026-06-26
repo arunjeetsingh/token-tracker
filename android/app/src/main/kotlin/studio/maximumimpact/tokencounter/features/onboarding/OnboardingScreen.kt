@@ -72,7 +72,7 @@ fun OnboardingScreen(
     val uriHandler = LocalUriHandler.current
     var key by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
-    var selectedProvider by remember { mutableStateOf(ProviderSetup.OPENAI) }
+    var selectedProvider by remember { mutableStateOf(ProviderSetup.DEFAULT) }
     val inferredProvider = remember(key) { ProviderSetup.fromApiKey(key) }
 
     Column(
@@ -156,7 +156,7 @@ fun OnboardingScreen(
                 value = key,
                 onValueChange = { key = it },
                 singleLine = true,
-                placeholder = { Text("sk-ant-admin01-…") },
+                placeholder = { Text("***…") },
                 visualTransformation = if (showKey) {
                     VisualTransformation.None
                 } else {
