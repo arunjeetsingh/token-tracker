@@ -79,6 +79,7 @@ fun TokenCounterApp() {
         val scope = rememberCoroutineScope()
         var showSettings by remember { mutableStateOf(false) }
         var showLimitDialog by remember { mutableStateOf(false) }
+        var showCredentialReplacement by remember { mutableStateOf(false) }
         var isConnecting by remember { mutableStateOf(false) }
         var submitError by remember { mutableStateOf<String?>(null) }
 
@@ -129,11 +130,40 @@ fun TokenCounterApp() {
                     showLimitDialog = true
                 },
                 onAlertEnabledChange = { viewModel.setAlertEnabled(it) },
+                onAddOrReplaceKey = {
+                    showSettings = false
+                    submitError = null
+                    showCredentialReplacement = true
+                },
                 onDisconnect = {
                     showSettings = false
                     viewModel.disconnect()
                 },
                 onDismiss = { showSettings = false }
+            )
+        }
+
+        if (showCredentialReplacement && state is DashboardState.Loaded) {
+            OnboardingScreen(
+                isConnecting = isConnecting,
+                submitError = submitError,
+                onCancel = {
+                    submitError = null
+                    showCredentialReplacement = false
+                },
+                onConnect = { key ->
+                    scope.launch {
+                        isConnecting = true
+                        submitError = null
+                        val result = viewModel.replaceCredential(key)
+                        isConnecting = false
+                        if (result is ConnectResult.Failure) {
+                            submitError = result.message
+                        } else {
+                            showCredentialReplacement = false
+                        }
+                    }
+                }
             )
         }
 

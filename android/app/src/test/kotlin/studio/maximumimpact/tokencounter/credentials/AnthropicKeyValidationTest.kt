@@ -20,6 +20,12 @@ class AnthropicKeyValidationTest {
     }
 
     @Test
+    fun looksLikeAnthropicKey_acceptsPlausibleOpenAIAdminKey() {
+        val key = "sk-admin-" + "a".repeat(40)
+        assertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))
+    }
+
+    @Test
     fun looksLikeAnthropicKey_acceptsPlausibleOpenAILegacyKey() {
         val key = "sk-" + "a".repeat(40)
         assertTrue(AnthropicKeyValidation.looksLikeAnthropicKey(key))

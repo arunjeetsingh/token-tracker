@@ -173,6 +173,46 @@ class DashboardViewModel(
         }
     }
 
+    /**
+     * Verifies and saves a replacement key without tearing down the current
+     * dashboard first. Used by Settings' "Add or replace API key" flow so a
+     * failed replacement attempt leaves the existing credential/cache intact.
+     */
+    suspend fun replaceCredential(rawKey: String): ConnectResult {
+        val trimmed = rawKey.trim()
+        if (trimmed.isEmpty()) {
+            return ConnectResult.Failure("Paste your admin key to continue.")
+        }
+        if (DemoData.isReviewKey(trimmed)) {
+            demoMode.setActive(true)
+            loadDemo()
+            return ConnectResult.Success
+        }
+
+        val hadLoadedDashboard = _state.value is DashboardState.Loaded
+        if (hadLoadedDashboard) _isRefreshing.value = true
+        return try {
+            val identity = cost.whoami(trimmed)
+            val report = cost.monthToDateCost(trimmed)
+
+            demoMode.setActive(false)
+            _isDemo.value = false
+            credentialStore.save(trimmed)
+            _maskedKey.value = AnthropicKeyValidation.masked(trimmed)
+            cache.save(report, identity.name)
+            _state.value = DashboardState.Loaded(identity.name, report)
+            ConnectResult.Success
+        } catch (e: Exception) {
+            if (e.isProviderAuthError()) {
+                ConnectResult.Failure(REJECTED_KEY_MESSAGE)
+            } else {
+                ConnectResult.Failure(e.message ?: "Couldn't connect. Check your connection and try again.")
+            }
+        } finally {
+            if (hadLoadedDashboard) _isRefreshing.value = false
+        }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             if (demoMode.isActive()) {

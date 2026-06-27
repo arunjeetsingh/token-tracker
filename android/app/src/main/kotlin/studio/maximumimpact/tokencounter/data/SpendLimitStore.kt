@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.map
 /**
  * On-device monthly spend limit the dashboard tracks against.
  *
- * The Anthropic Admin API does not expose the org's configured spend limit (it
- * lives in the Console only), so this is a *local* target the user sets in the
- * app — the gauge renders real spend against it, but changing it here does NOT
- * change the actual Anthropic limit. Stored as whole cents; null = not set.
+ * Provider usage APIs do not expose the org's configured spend limit (it lives
+ * in the provider console only), so this is a *local* target the user sets in
+ * the app — the gauge renders real spend against it, but changing it here does
+ * NOT change the actual provider limit. Stored as whole cents; null = not set.
  */
 interface SpendLimitStore {
     /** Emits the current limit in cents, or null when unset. */

@@ -48,6 +48,7 @@ struct DashboardView: View {
                 onSetLimit: { viewModel.setSpendLimit($0) },
                 onClearLimit: { viewModel.setSpendLimit(nil) },
                 onAlertEnabledChange: { viewModel.setSpendAlertEnabled($0) },
+                onConnect: { await viewModel.connect(using: $0) },
                 onDisconnect: { await viewModel.disconnect() }
             )
         }

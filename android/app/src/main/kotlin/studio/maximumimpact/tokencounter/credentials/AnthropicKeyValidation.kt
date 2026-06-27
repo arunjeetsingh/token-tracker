@@ -16,7 +16,7 @@ object AnthropicKeyValidation {
      * fast if a key is malformed, revoked, or lacks the required scopes, and we
      * surface that error.
      */
-    val clipboardPrefixes = listOf("sk-ant-admin01-", "sk-ant-api03-", "sk-ant-", "sk-proj-", "sk-")
+    val clipboardPrefixes = listOf("***", "***", "sk-ant-", "sk-admin-", "sk-proj-", "sk-")
 
     /** Minimum total length we'll even consider — keeps obvious garbage out. */
     const val MIN_LENGTH = 32
