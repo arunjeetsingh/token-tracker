@@ -42,3 +42,23 @@ data class MtdCost(
     val hasTodayEstimate: Boolean get() = todayEstimatedCost.cents > 0
     val hasUnpricedModels: Boolean get() = unpricedModels.isNotEmpty()
 }
+
+
+fun combineMtdCosts(reports: Collection<MtdCost>): MtdCost {
+    require(reports.isNotEmpty()) { "At least one report is required" }
+    return MtdCost(
+        finalizedCost = Money(reports.sumOf { it.finalizedCost.cents }),
+        todayEstimatedCost = Money(reports.sumOf { it.todayEstimatedCost.cents }),
+        unpricedModels = reports.flatMap { it.unpricedModels }.distinct().sorted(),
+        finalizedThrough = reports.minOf { it.finalizedThrough },
+        asOf = reports.maxOf { it.asOf },
+        dailySpend = reports.flatMap { it.dailySpend }
+            .groupBy { it.date }
+            .map { (date, rows) -> DailySpend(date, Money(rows.sumOf { it.cost.cents })) }
+            .sortedBy { it.date },
+        modelBreakdown = reports.flatMap { it.modelBreakdown }
+            .groupBy { it.modelId to it.displayName }
+            .map { (model, rows) -> ModelSpend(model.first, model.second, Money(rows.sumOf { it.cost.cents })) }
+            .sortedByDescending { it.cost.cents }
+    )
+}

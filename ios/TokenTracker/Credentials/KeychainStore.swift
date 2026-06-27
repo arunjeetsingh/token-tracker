@@ -6,6 +6,7 @@ import Security
 enum KeychainStore {
     enum CredentialKey: String {
         case anthropicAdminKey = "ai.openclaw.tokentracker.anthropic.admin"
+        case openAIAdminKey = "ai.openclaw.tokentracker.openai.admin"
     }
 
     enum KeychainError: Error, LocalizedError {

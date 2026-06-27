@@ -11,7 +11,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import studio.maximumimpact.tokencounter.providers.ProviderKind
+import studio.maximumimpact.tokencounter.providers.providerKindFor
 import java.security.KeyStore
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -20,53 +23,67 @@ import javax.crypto.spec.GCMParameterSpec
 /**
  * [CredentialStore] backed by an Android Keystore AES-GCM key.
  *
- * The admin key is encrypted with a non-exportable Keystore key (alias
- * [KEY_ALIAS]) and only the ciphertext is persisted, in a private DataStore.
- * This mirrors the iOS Keychain wrapper: the secret never leaves the device,
- * is not included in backups (the app sets `allowBackup=false`), and is not
- * synced to the cloud.
- *
- * Note on "hardware backing": keys generated in the `AndroidKeyStore` provider
- * are non-exportable, but whether the key material actually lives in secure
- * hardware (TEE / StrongBox) is device- and OS-version-dependent. We do not
- * require or assert a hardware security level here, so this is described as
- * *Keystore-backed*, not *hardware-backed*. If a hardware guarantee is needed
- * later, inspect `KeyInfo.getSecurityLevel()` (API 31+) and gate accordingly.
- *
- * Note on user auth: the key is deliberately usable whenever the app runs — we
- * do NOT set `setUserAuthenticationRequired(true)`. A background-polling cost
- * tracker needs to refresh without a biometric/lock-screen prompt, mirroring
- * the iOS item's `whenUnlocked`-style accessibility (no per-use auth gate).
- *
- * Blob layout: Base64( [12-byte GCM IV] || [ciphertext + 16-byte GCM tag] ).
+ * Provider keys are encrypted with a non-exportable Keystore key (alias
+ * [KEY_ALIAS]) and only ciphertext is persisted, in a private DataStore. The
+ * legacy single-key slot is still read for migration/back-compat, while new
+ * writes use provider-specific slots so Anthropic and OpenAI can coexist.
  */
 class KeystoreCredentialStore(
     private val dataStore: DataStore<Preferences>
 ) : CredentialStore {
 
     override suspend fun save(key: String) {
-        val blob = encrypt(key)
-        dataStore.edit { it[PREF_KEY] = blob }
+        save(providerKindFor(key), key)
     }
 
-    override suspend fun load(): String? {
-        val blob = dataStore.data.first()[PREF_KEY] ?: return null
-        return try {
-            decrypt(blob)
-        } catch (e: Exception) {
-            // Decryption failed: the Keystore key was invalidated, the blob is
-            // corrupt, or the GCM tag check failed. Drop the unrecoverable blob
-            // so we don't silently retry the same failure on every launch — the
-            // caller treats null as "logged out" and re-onboards once. Log at
-            // WARN so a genuine decryption regression isn't invisible.
-            Log.w(TAG, "Failed to decrypt stored admin key; clearing it.", e)
-            delete()
-            null
+    override suspend fun save(provider: ProviderKind, key: String) {
+        val blob = encrypt(key)
+        dataStore.edit { prefs ->
+            prefs[providerKey(provider)] = blob
+            // Keep the legacy slot updated so older app builds can still read at
+            // least one connected provider if the user rolls back.
+            prefs[PREF_KEY] = blob
         }
     }
 
+    override suspend fun load(): String? {
+        val all = loadAll()
+        if (all.isNotEmpty()) return all.values.first()
+        val blob = dataStore.data.first()[PREF_KEY] ?: return null
+        return decryptOrClear(blob, clear = { delete() })
+    }
+
+    override suspend fun loadAll(): Map<ProviderKind, String> {
+        val prefs = dataStore.data.first()
+        val providerKeys = ProviderKind.entries.mapNotNull { provider ->
+            val blob = prefs[providerKey(provider)] ?: return@mapNotNull null
+            decryptOrClear(blob, clear = { delete(provider) })?.let { provider to it }
+        }.toMap()
+        if (providerKeys.isNotEmpty()) return providerKeys
+
+        // Migration/back-compat path for the old single-key slot.
+        val legacy = prefs[PREF_KEY]?.let { decryptOrClear(it, clear = { delete() }) }
+        return legacy?.let { mapOf(providerKindFor(it) to it) } ?: emptyMap()
+    }
+
     override suspend fun delete() {
-        dataStore.edit { it.remove(PREF_KEY) }
+        dataStore.edit { prefs ->
+            prefs.remove(PREF_KEY)
+            ProviderKind.entries.forEach { prefs.remove(providerKey(it)) }
+        }
+    }
+
+    override suspend fun delete(provider: ProviderKind) {
+        dataStore.edit { prefs ->
+            prefs.remove(providerKey(provider))
+            // If the legacy slot points at the same provider being removed, clear
+            // it so a deleted provider cannot come back on the next migration read.
+            prefs[PREF_KEY]?.let { blob ->
+                decryptOrNull(blob)?.let { key ->
+                    if (providerKindFor(key) == provider) prefs.remove(PREF_KEY)
+                }
+            }
+        }
     }
 
     // --- crypto ---
@@ -88,6 +105,17 @@ class KeystoreCredentialStore(
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
+
+    private suspend fun decryptOrClear(blob: String, clear: suspend () -> Unit): String? =
+        try {
+            decrypt(blob)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to decrypt stored provider key; clearing it.", e)
+            clear()
+            null
+        }
+
+    private fun decryptOrNull(blob: String): String? = runCatching { decrypt(blob) }.getOrNull()
 
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
@@ -114,6 +142,9 @@ class KeystoreCredentialStore(
         private const val GCM_TAG_BITS = 128
 
         private val PREF_KEY = stringPreferencesKey("anthropic_admin_key_enc")
+
+        private fun providerKey(provider: ProviderKind) =
+            stringPreferencesKey("provider_${provider.name.lowercase(Locale.US)}_key_enc")
 
         private val Context.credentialDataStore by preferencesDataStore(name = "credentials")
 
