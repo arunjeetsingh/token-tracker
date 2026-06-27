@@ -174,6 +174,44 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun replaceCredential_authErrorKeepsExistingLoadedStateAndCredential() = runTest(dispatcher) {
+        creds.stored = "sk-ant...old"
+        cache.cached = CachedReport(sampleReport, "Old Org")
+        val vm = viewModel()
+        vm.bootstrap()
+        advanceUntilIdle()
+        val loadedState = vm.state.value
+        assertTrue(loadedState is DashboardState.Loaded)
+
+        cost.whoamiError = authError()
+        val result = vm.replaceCredential("sk-admin-new")
+
+        assertTrue(result is ConnectResult.Failure)
+        assertEquals("sk-ant...old", creds.stored)
+        assertEquals(loadedState, vm.state.value)
+        assertEquals(CachedReport(sampleReport, "Acme"), cache.cached)
+    }
+
+    @Test
+    fun replaceCredential_successSavesNewKeyAndRefreshesDashboard() = runTest(dispatcher) {
+        creds.stored = "sk-ant...old"
+        cache.cached = CachedReport(sampleReport, "Old Org")
+        cost.org = OrgIdentity("org_old", "organization", "Old Org")
+        val vm = viewModel()
+        vm.bootstrap()
+        advanceUntilIdle()
+
+        cost.org = OrgIdentity("org_new", "organization", "New Org")
+        val result = vm.replaceCredential("sk-admin-new")
+
+        assertEquals(ConnectResult.Success, result)
+        assertEquals("sk-admin-new", creds.stored)
+        val state = vm.state.value
+        assertTrue(state is DashboardState.Loaded && state.orgName == "New Org")
+        assertEquals(CachedReport(sampleReport, "New Org"), cache.cached)
+    }
+
+    @Test
     fun bootstrap_noStoredKey_goesToOnboarding() = runTest(dispatcher) {
         val vm = viewModel()
         vm.bootstrap()

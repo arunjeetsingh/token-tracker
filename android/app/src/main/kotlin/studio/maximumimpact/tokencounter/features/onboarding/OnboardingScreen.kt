@@ -67,6 +67,7 @@ fun OnboardingScreen(
     onConnect: (String) -> Unit,
     isConnecting: Boolean = false,
     submitError: String? = null,
+    onCancel: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uriHandler = LocalUriHandler.current
@@ -83,6 +84,17 @@ fun OnboardingScreen(
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        if (onCancel != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onCancel) {
+                    Text("Cancel")
+                }
+            }
+        }
+
         ProviderPicker(
             selectedProvider = selectedProvider,
             onSelectedProviderChange = { selectedProvider = it }
