@@ -33,29 +33,56 @@ private class FakeCostProvider(
     var org: OrgIdentity = OrgIdentity("org_1", "organization", "Acme"),
     var report: MtdCost? = null,
     var whoamiError: Throwable? = null,
-    var reportError: Throwable? = null
+    var reportError: Throwable? = null,
+    var orgsByKey: Map<String, OrgIdentity> = emptyMap(),
+    var reportsByKey: Map<String, MtdCost> = emptyMap(),
+    var errorsByKey: Map<String, Throwable> = emptyMap(),
+    var reportErrorsByKey: Map<String, Throwable> = emptyMap()
 ) : CostProvider {
     override suspend fun whoami(apiKey: String): OrgIdentity {
+        errorsByKey[apiKey]?.let { throw it }
         whoamiError?.let { throw it }
-        return org
+        return orgsByKey[apiKey] ?: org
     }
 
     override suspend fun monthToDateCost(apiKey: String): MtdCost {
+        reportErrorsByKey[apiKey]?.let { throw it }
+        errorsByKey[apiKey]?.let { throw it }
         reportError?.let { throw it }
-        return report ?: error("no report configured")
+        return reportsByKey[apiKey] ?: report ?: error("no report configured")
     }
 }
 
 private class FakeCredentialStore(var stored: String? = null) : CredentialStore {
+    var storedByProvider: Map<studio.maximumimpact.tokencounter.providers.ProviderKind, String> = emptyMap()
     override suspend fun save(key: String) { stored = key }
-    override suspend fun load(): String? = stored
-    override suspend fun delete() { stored = null }
+    override suspend fun save(provider: studio.maximumimpact.tokencounter.providers.ProviderKind, key: String) {
+        storedByProvider = storedByProvider + (provider to key)
+        stored = key
+    }
+    override suspend fun load(): String? = stored ?: storedByProvider.values.firstOrNull()
+    override suspend fun loadAll(): Map<studio.maximumimpact.tokencounter.providers.ProviderKind, String> =
+        if (storedByProvider.isNotEmpty()) storedByProvider else load()?.let { mapOf(studio.maximumimpact.tokencounter.providers.providerKindFor(it) to it) } ?: emptyMap()
+    override suspend fun delete() { stored = null; storedByProvider = emptyMap() }
+    override suspend fun delete(provider: studio.maximumimpact.tokencounter.providers.ProviderKind) {
+        storedByProvider = storedByProvider - provider
+        if (stored?.let { studio.maximumimpact.tokencounter.providers.providerKindFor(it) } == provider) {
+            stored = null
+        }
+    }
 }
 
 private class FakeReportCache(var cached: CachedReport? = null) : ReportCache {
+    var cachedByProvider: Map<studio.maximumimpact.tokencounter.providers.ProviderKind, CachedReport> = emptyMap()
     override suspend fun load(): CachedReport? = cached
+    override suspend fun loadAll(): Map<studio.maximumimpact.tokencounter.providers.ProviderKind, CachedReport> = cachedByProvider
     override suspend fun save(report: MtdCost, orgName: String) { cached = CachedReport(report, orgName) }
-    override suspend fun clear() { cached = null }
+    override suspend fun save(provider: studio.maximumimpact.tokencounter.providers.ProviderKind, report: MtdCost, orgName: String) {
+        cachedByProvider = cachedByProvider + (provider to CachedReport(report, orgName))
+        cached = CachedReport(report, orgName)
+    }
+    override suspend fun clear() { cached = null; cachedByProvider = emptyMap() }
+    override suspend fun clear(provider: studio.maximumimpact.tokencounter.providers.ProviderKind) { cachedByProvider = cachedByProvider - provider }
 }
 
 private class FakeDemoModeStore(var active: Boolean = false) : DemoModeStore {
@@ -113,6 +140,12 @@ class DashboardViewModelTest {
     private fun authError(): HttpException =
         HttpException(Response.error<Any>(401, "".toResponseBody(null)))
 
+    private fun reportWithFinalizedCents(cents: Long): MtdCost =
+        sampleReport.copy(
+            finalizedCost = studio.maximumimpact.tokencounter.core.Money(cents),
+            todayEstimatedCost = studio.maximumimpact.tokencounter.core.Money(0)
+        )
+
     @Test
     fun connect_withReviewKey_entersDemoWithoutSavingKey() = runTest(dispatcher) {
         val vm = viewModel()
@@ -137,12 +170,12 @@ class DashboardViewModelTest {
         cost.org = OrgIdentity("org_9", "organization", "Globex")
         val vm = viewModel()
 
-        val result = vm.connect("sk-ant-admin01-realrealrealrealrealreal")
+        val result = vm.connect("sk-ant...real")
 
         assertEquals(ConnectResult.Success, result)
         val state = vm.state.value
         assertTrue(state is DashboardState.Loaded && state.orgName == "Globex")
-        assertEquals("sk-ant-admin01-realrealrealrealrealreal", creds.stored)
+        assertEquals("sk-ant...real", creds.stored)
         assertFalse(vm.isDemo.value)
         assertEquals(CachedReport(sampleReport, "Globex"), cache.cached)
     }
@@ -152,7 +185,7 @@ class DashboardViewModelTest {
         cost.whoamiError = authError()
         val vm = viewModel()
 
-        val result = vm.connect("sk-ant-admin01-badbadbadbadbadbadbad")
+        val result = vm.connect("sk-ant...dbad")
 
         assertTrue(result is ConnectResult.Failure)
         assertEquals(DashboardState.NeedsCredentials, vm.state.value)
@@ -165,12 +198,26 @@ class DashboardViewModelTest {
         cost.reportError = authError()
         val vm = viewModel()
 
-        val result = vm.connect("sk-ant-admin01-realrealrealrealrealreal")
+        val result = vm.connect("sk-ant...real")
 
         assertTrue(result is ConnectResult.Failure)
         assertEquals(DashboardState.NeedsCredentials, vm.state.value)
         assertNull("rejected key must not linger in storage", creds.stored)
         assertNull(cache.cached)
+    }
+
+    @Test
+    fun connect_transientCostFailureAfterWhoami_keepsAuthenticatedKeyAndShowsError() = runTest(dispatcher) {
+        cost.org = OrgIdentity("org_9", "organization", "Globex")
+        cost.reportError = java.io.IOException("temporary outage")
+        val vm = viewModel()
+
+        val result = vm.connect("sk-ant...real")
+
+        assertEquals(ConnectResult.Success, result)
+        assertEquals("sk-ant...real", creds.storedByProvider[studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC])
+        val state = vm.state.value
+        assertTrue(state is DashboardState.Failed && state.message == "temporary outage")
     }
 
     @Test
@@ -207,7 +254,15 @@ class DashboardViewModelTest {
         assertEquals(ConnectResult.Success, result)
         assertEquals("sk-admin-new", creds.stored)
         val state = vm.state.value
-        assertTrue(state is DashboardState.Loaded && state.orgName == "New Org")
+        assertTrue(state is DashboardState.Loaded && state.orgName == "All providers")
+        state as DashboardState.Loaded
+        assertEquals(
+            setOf(
+                studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC,
+                studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI
+            ),
+            state.providerReports.map { it.provider }.toSet()
+        )
         assertEquals(CachedReport(sampleReport, "New Org"), cache.cached)
     }
 
@@ -221,7 +276,7 @@ class DashboardViewModelTest {
 
     @Test
     fun bootstrap_withKey_refreshesToLoaded() = runTest(dispatcher) {
-        creds.stored = "sk-ant-admin01-stored"
+        creds.stored = "sk-ant...ored"
         cache.cached = CachedReport(sampleReport, "Cached Org")
         cost.org = OrgIdentity("org_2", "organization", "Fresh Org")
         val vm = viewModel()
@@ -234,8 +289,109 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun bootstrap_withAnthropicAndOpenAIKeys_combinesSpendAndKeepsProviderBreakdown() = runTest(dispatcher) {
+        val anthropic = reportWithFinalizedCents(1_200)
+        val openAI = reportWithFinalizedCents(2_300)
+        cost.orgsByKey = mapOf(
+            "sk-ant...ored" to OrgIdentity("org_anthropic", "organization", "Anthropic"),
+            "***" to OrgIdentity("org_openai", "organization", "OpenAI")
+        )
+        cost.reportsByKey = mapOf("sk-ant...ored" to anthropic, "***" to openAI)
+        creds.storedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to "sk-ant...ored",
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to "***"
+        )
+        val vm = viewModel()
+
+        vm.bootstrap()
+        advanceUntilIdle()
+
+        val state = vm.state.value as DashboardState.Loaded
+        assertEquals(3_500L, state.report.total.cents)
+        assertEquals(2, state.providerReports.size)
+        assertEquals(setOf(studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC, studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI), state.providerReports.map { it.provider }.toSet())
+    }
+
+    @Test
+    fun selectProviderFilter_showsOnlyThatProvidersSpend() = runTest(dispatcher) {
+        val anthropic = reportWithFinalizedCents(1_200)
+        val openAI = reportWithFinalizedCents(2_300)
+        cost.orgsByKey = mapOf(
+            "sk-ant...ored" to OrgIdentity("org_anthropic", "organization", "Anthropic"),
+            "***" to OrgIdentity("org_openai", "organization", "OpenAI")
+        )
+        cost.reportsByKey = mapOf("sk-ant...ored" to anthropic, "***" to openAI)
+        creds.storedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to "sk-ant...ored",
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to "***"
+        )
+        val vm = viewModel()
+        vm.bootstrap()
+        advanceUntilIdle()
+
+        vm.selectProviderFilter(studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI)
+
+        val state = vm.state.value as DashboardState.Loaded
+        assertEquals(studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI, state.selectedProvider)
+        assertEquals(2_300L, state.report.total.cents)
+    }
+
+    @Test
+    fun refresh_transientFailureForOneProviderMergesFreshReportsOverCachedReports() = runTest(dispatcher) {
+        val cachedAnthropic = reportWithFinalizedCents(1_200)
+        val freshAnthropic = reportWithFinalizedCents(1_500)
+        val cachedOpenAI = reportWithFinalizedCents(2_300)
+        cost.orgsByKey = mapOf("sk-ant...ored" to OrgIdentity("org_anthropic", "organization", "Anthropic"))
+        cost.reportsByKey = mapOf("sk-ant...ored" to freshAnthropic)
+        cost.reportErrorsByKey = mapOf("***" to java.io.IOException("temporary outage"))
+        creds.storedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to "sk-ant...ored",
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to "***"
+        )
+        cache.cachedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to CachedReport(cachedAnthropic, "Anthropic"),
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to CachedReport(cachedOpenAI, "OpenAI")
+        )
+        val vm = viewModel()
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        val state = vm.state.value as DashboardState.Loaded
+        assertEquals(3_800L, state.report.total.cents)
+        assertEquals(setOf(studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC, studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI), state.providerReports.map { it.provider }.toSet())
+        assertEquals(1_500L, state.providerReports.single { it.provider == studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC }.report.total.cents)
+        assertEquals(2_300L, state.providerReports.single { it.provider == studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI }.report.total.cents)
+    }
+
+    @Test
+    fun refresh_authErrorForOneProviderKeepsOtherProviderCredentialAndCache() = runTest(dispatcher) {
+        val openAI = reportWithFinalizedCents(2_300)
+        cost.orgsByKey = mapOf("***" to OrgIdentity("org_openai", "organization", "OpenAI"))
+        cost.reportsByKey = mapOf("***" to openAI)
+        cost.errorsByKey = mapOf("sk-ant...ored" to authError())
+        creds.storedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to "sk-ant...ored",
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to "***"
+        )
+        cache.cachedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to CachedReport(sampleReport, "Anthropic"),
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to CachedReport(openAI, "OpenAI")
+        )
+        val vm = viewModel()
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertFalse(creds.storedByProvider.containsKey(studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC))
+        assertEquals("***", creds.storedByProvider[studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI])
+        val state = vm.state.value as DashboardState.Loaded
+        assertEquals(2_300L, state.report.total.cents)
+    }
+
+    @Test
     fun refresh_authError_wipesKeyAndReOnboards() = runTest(dispatcher) {
-        creds.stored = "sk-ant-admin01-stored"
+        creds.stored = "sk-ant...ored"
         cost.whoamiError = authError()
         val vm = viewModel()
 
@@ -294,7 +450,7 @@ class DashboardViewModelTest {
 
     @Test
     fun disconnect_clearsKeyCacheAndDemoFlag() = runTest(dispatcher) {
-        creds.stored = "sk-ant-admin01-stored"
+        creds.stored = "sk-ant...ored"
         cache.cached = CachedReport(sampleReport, "Org")
         demo.active = true
         val vm = viewModel()

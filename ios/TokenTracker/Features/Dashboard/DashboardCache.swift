@@ -2,19 +2,12 @@ import Foundation
 
 /// Persists the last successfully-loaded dashboard report to `UserDefaults`
 /// so the app can render previous data on launch while a fresh refresh is
-/// in-flight, instead of staring at an empty screen.
-///
-/// Design notes:
-/// - We deliberately use `UserDefaults` rather than the Keychain. The cached
-///   report is non-sensitive (totals, daily series, model breakdown), and
-///   it's keyed alongside the bundle so it disappears with the app.
-/// - The cache is *not* used for Demo Mode — DemoMode short-circuits before
-///   we ever consult the cache, so reviewers always see canned data.
-/// - On any decode failure (schema drift, partial write) we silently
-///   discard. Stale cached data is never worse than no cached data because
-///   the dashboard always shows the "as of" timestamp from the report.
+/// in-flight, instead of staring at an empty screen. Snapshots are keyed by
+/// provider so a multi-provider dashboard can show combined/all and provider
+/// filtered views without flashing another provider's stale data.
 enum DashboardCache {
-    private static let storeKey = "DashboardCache.snapshot.v1"
+    private static let storeKey = "DashboardCache.snapshot.v2"
+    private static let legacyStoreKey = "DashboardCache.snapshot.v1"
     private static let store = UserDefaults.standard
 
     private struct Snapshot: Codable {
@@ -23,40 +16,90 @@ enum DashboardCache {
         let savedAt: Date
     }
 
-    /// Load the last cached report, if any. Returns nil on miss or decode
-    /// failure.
-    static func load() -> (report: MTDCost, orgName: String)? {
-        guard let data = store.data(forKey: storeKey) else { return nil }
-        do {
-            let snap = try JSONDecoder.snapshot.decode(Snapshot.self, from: data)
-            return (snap.report, snap.orgName)
-        } catch {
-            // Old or partial blob — drop it on the floor and behave like a
-            // cache miss. We don't want a single bad write to lock the app
-            // out of cached data forever.
-            return nil
+    private typealias SnapshotMap = [ProviderKind: Snapshot]
+
+    static func loadAll() -> [ProviderKind: (report: MTDCost, orgName: String)] {
+        var result: [ProviderKind: (report: MTDCost, orgName: String)] = [:]
+        if let data = store.data(forKey: storeKey),
+           let snaps = try? JSONDecoder.snapshot.decode(SnapshotMap.self, from: data) {
+            for (provider, snap) in snaps {
+                result[provider] = (snap.report, snap.orgName)
+            }
+            return result
         }
+        if let legacy = loadLegacy() {
+            result[.anthropic] = legacy
+        }
+        return result
     }
 
-    /// Persist a freshly-loaded report. Errors are ignored intentionally —
-    /// failing to cache should never surface to the user.
+    static func load(_ provider: ProviderKind) -> (report: MTDCost, orgName: String)? {
+        loadAll()[provider]
+    }
+
+    /// Legacy single-provider accessor used by older call sites/tests.
+    static func load() -> (report: MTDCost, orgName: String)? {
+        let all = loadAll()
+        if all.count == 1 { return all.values.first }
+        return all[.anthropic] ?? all[.openAI]
+    }
+
+    static func save(report: MTDCost, orgName: String, for provider: ProviderKind) {
+        var snaps = loadSnapshotMap()
+        snaps[provider] = Snapshot(report: report, orgName: orgName, savedAt: Date())
+        saveSnapshotMap(snaps)
+    }
+
+    /// Legacy single-provider save.
     static func save(report: MTDCost, orgName: String) {
-        let snap = Snapshot(report: report, orgName: orgName, savedAt: Date())
-        if let data = try? JSONEncoder.snapshot.encode(snap) {
+        save(report: report, orgName: orgName, for: .anthropic)
+    }
+
+    static func clear(_ provider: ProviderKind) {
+        var snaps = loadSnapshotMap()
+        snaps.removeValue(forKey: provider)
+        saveSnapshotMap(snaps)
+    }
+
+    static func clearAll() {
+        store.removeObject(forKey: storeKey)
+        store.removeObject(forKey: legacyStoreKey)
+    }
+
+    /// Legacy single-provider clear.
+    static func clear() { clearAll() }
+
+    private static func loadSnapshotMap() -> SnapshotMap {
+        if let data = store.data(forKey: storeKey),
+           let snaps = try? JSONDecoder.snapshot.decode(SnapshotMap.self, from: data) {
+            return snaps
+        }
+        if let legacy = loadLegacy() {
+            return [.anthropic: Snapshot(report: legacy.report, orgName: legacy.orgName, savedAt: Date())]
+        }
+        return [:]
+    }
+
+    private static func saveSnapshotMap(_ snaps: SnapshotMap) {
+        if snaps.isEmpty {
+            store.removeObject(forKey: storeKey)
+            return
+        }
+        if let data = try? JSONEncoder.snapshot.encode(snaps) {
             store.set(data, forKey: storeKey)
         }
     }
 
-    /// Drop the cached snapshot. Called on disconnect so a new connection
-    /// doesn't briefly flash the previous owner's data.
-    static func clear() {
-        store.removeObject(forKey: storeKey)
+    private static func loadLegacy() -> (report: MTDCost, orgName: String)? {
+        guard let data = store.data(forKey: legacyStoreKey),
+              let snap = try? JSONDecoder.snapshot.decode(Snapshot.self, from: data) else {
+            return nil
+        }
+        return (snap.report, snap.orgName)
     }
 }
 
 private extension JSONEncoder {
-    /// Shared encoder configured for the cache: ISO-8601 dates so
-    /// round-tripping is stable across timezones / locales.
     static let snapshot: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601

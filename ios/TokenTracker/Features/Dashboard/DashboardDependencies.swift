@@ -22,27 +22,31 @@ protocol CostProviding {
     func monthToDateCost(apiKey: String) async throws -> MTDCost
 }
 
-enum ProviderKind: Equatable {
+enum ProviderKind: String, CaseIterable, Codable, Equatable, Hashable {
     case anthropic
     case openAI
 }
 
 func providerKind(for apiKey: String) -> ProviderKind {
-    apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sk-ant-") ? .anthropic : .openAI
+    apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sk-ant") ? .anthropic : .openAI
 }
 
-/// Reads / writes the single provider API-key slot in the Keychain.
+/// Reads / writes provider API keys in the Keychain.
 protocol CredentialStoring {
-    func load() throws -> String?
-    func save(_ value: String) throws
-    func delete() throws
+    func loadAll() throws -> [ProviderKind: String]
+    func load(_ provider: ProviderKind) throws -> String?
+    func save(_ value: String, for provider: ProviderKind) throws
+    func delete(_ provider: ProviderKind) throws
+    func deleteAll() throws
 }
 
-/// Persists / restores the last dashboard snapshot for instant cold launch.
+/// Persists / restores dashboard snapshots for instant cold launch.
 protocol ReportCaching {
-    func load() -> (report: MTDCost, orgName: String)?
-    func save(report: MTDCost, orgName: String)
-    func clear()
+    func loadAll() -> [ProviderKind: (report: MTDCost, orgName: String)]
+    func load(_ provider: ProviderKind) -> (report: MTDCost, orgName: String)?
+    func save(report: MTDCost, orgName: String, for provider: ProviderKind)
+    func clear(_ provider: ProviderKind)
+    func clearAll()
 }
 
 /// On-device monthly spend-limit *target* (cents, nil = unset). The Admin API
@@ -84,15 +88,37 @@ struct LiveCostProvider: CostProviding {
 }
 
 struct LiveCredentialStore: CredentialStoring {
-    func load() throws -> String? { try KeychainStore.load(.anthropicAdminKey) }
-    func save(_ value: String) throws { try KeychainStore.save(value, for: .anthropicAdminKey) }
-    func delete() throws { try KeychainStore.delete(.anthropicAdminKey) }
+    func loadAll() throws -> [ProviderKind: String] {
+        var result: [ProviderKind: String] = [:]
+        for provider in ProviderKind.allCases {
+            if let value = try load(provider), !value.isEmpty {
+                result[provider] = value
+            }
+        }
+        return result
+    }
+
+    func load(_ provider: ProviderKind) throws -> String? { try KeychainStore.load(credentialKey(for: provider)) }
+    func save(_ value: String, for provider: ProviderKind) throws { try KeychainStore.save(value, for: credentialKey(for: provider)) }
+    func delete(_ provider: ProviderKind) throws { try KeychainStore.delete(credentialKey(for: provider)) }
+    func deleteAll() throws {
+        for provider in ProviderKind.allCases { try delete(provider) }
+    }
+
+    private func credentialKey(for provider: ProviderKind) -> KeychainStore.CredentialKey {
+        switch provider {
+        case .anthropic: return .anthropicAdminKey
+        case .openAI: return .openAIAdminKey
+        }
+    }
 }
 
 struct LiveReportCache: ReportCaching {
-    func load() -> (report: MTDCost, orgName: String)? { DashboardCache.load() }
-    func save(report: MTDCost, orgName: String) { DashboardCache.save(report: report, orgName: orgName) }
-    func clear() { DashboardCache.clear() }
+    func loadAll() -> [ProviderKind: (report: MTDCost, orgName: String)] { DashboardCache.loadAll() }
+    func load(_ provider: ProviderKind) -> (report: MTDCost, orgName: String)? { DashboardCache.load(provider) }
+    func save(report: MTDCost, orgName: String, for provider: ProviderKind) { DashboardCache.save(report: report, orgName: orgName, for: provider) }
+    func clear(_ provider: ProviderKind) { DashboardCache.clear(provider) }
+    func clearAll() { DashboardCache.clearAll() }
 }
 
 /// UserDefaults-backed local spend limit. Non-sensitive, so it sits alongside
@@ -137,6 +163,16 @@ struct LiveNotificationPrefs: NotificationPreferenceStoring {
             } else {
                 defaults.removeObject(forKey: lastMonthKey)
             }
+        }
+    }
+}
+
+
+extension ProviderKind {
+    var displayName: String {
+        switch self {
+        case .anthropic: return "Anthropic"
+        case .openAI: return "OpenAI"
         }
     }
 }

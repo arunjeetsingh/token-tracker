@@ -23,7 +23,7 @@ interface CostProvider {
 enum class ProviderKind { ANTHROPIC, OPENAI }
 
 fun providerKindFor(apiKey: String): ProviderKind =
-    if (apiKey.trim().startsWith("sk-ant-")) ProviderKind.ANTHROPIC else ProviderKind.OPENAI
+    if (apiKey.trim().startsWith("sk-ant")) ProviderKind.ANTHROPIC else ProviderKind.OPENAI
 
 /** Production [CostProvider] backed by Anthropic or OpenAI based on the key prefix. */
 class LiveCostProvider(

@@ -12,10 +12,11 @@ import XCTest
 final class DashboardViewModelTests: XCTestCase {
     /// A real-length, admin-looking key (>= `AnthropicKeyValidation.minLength`,
     /// and distinct from the demo review key) for the real-credential paths.
-    private let validKey = "sk-ant-admin01-" + String(repeating: "A", count: 40)
+    private let validKey = "sk-ant-" + String(repeating: "A", count: 40)
+    private let openAIKey = "sk-proj-" + String(repeating: "B", count: 40)
 
     /// Throwaway defaults suite so DemoMode persistence never leaks into
-    /// `UserDefaults.standard` (mirrors `DemoModeTests`).
+
     private let suiteName = "ai.openclaw.tokentracker.DashboardViewModelTests"
 
     override func setUp() {
@@ -76,6 +77,89 @@ final class DashboardViewModelTests: XCTestCase {
         }
         XCTAssertEqual(loaded, fresh, "Fresh fetch must replace the cached snapshot")
         XCTAssertEqual(org, "Fresh Org")
+    }
+
+    func testBootstrap_multipleStoredKeys_combinesProviderSpend() async {
+        let anthropicReport = TestFixtures.report(finalizedCents: 1_200, todayCents: 34)
+        let openAIReport = TestFixtures.report(finalizedCents: 2_300, todayCents: 56)
+        let cost = MockCostProvider(
+            whoamiByKey: [validKey: .success(org("Anthropic Org")), openAIKey: .success(org("OpenAI Org"))],
+            costByKey: [validKey: .success(anthropicReport), openAIKey: .success(openAIReport)]
+        )
+        let keychain = MockCredentialStore(storedByProvider: [ProviderKind.anthropic: validKey, ProviderKind.openAI: openAIKey])
+        let cache = MockReportCache()
+        let vm = makeVM(cost: cost, keychain: keychain, cache: cache)
+
+        await vm.bootstrap()
+
+        guard case .loaded(let loaded, let org) = vm.state else {
+            return XCTFail("expected .loaded, got \(vm.state)")
+        }
+        XCTAssertEqual(org, "All providers")
+        XCTAssertEqual(loaded.finalizedCost.cents, 3_500)
+        XCTAssertEqual(loaded.todayEstimatedCost.cents, 90)
+        XCTAssertEqual(vm.providerReports.map { $0.provider }, [ProviderKind.anthropic, ProviderKind.openAI])
+        XCTAssertNil(vm.selectedProvider)
+        XCTAssertEqual(cache.saveCount, 2)
+    }
+
+    func testProviderFilter_showsSelectedProviderSpendThenAllProviders() async {
+        let anthropicReport = TestFixtures.report(finalizedCents: 1_200)
+        let openAIReport = TestFixtures.report(finalizedCents: 2_300)
+        let cost = MockCostProvider(
+            whoamiByKey: [validKey: .success(org("Anthropic Org")), openAIKey: .success(org("OpenAI Org"))],
+            costByKey: [validKey: .success(anthropicReport), openAIKey: .success(openAIReport)]
+        )
+        let vm = makeVM(
+            cost: cost,
+            keychain: MockCredentialStore(storedByProvider: [ProviderKind.anthropic: validKey, ProviderKind.openAI: openAIKey])
+        )
+
+        await vm.bootstrap()
+        vm.selectProviderFilter(ProviderKind.openAI)
+
+        guard case .loaded(let filtered, let filteredOrg) = vm.state else {
+            return XCTFail("expected .loaded after filter, got \(vm.state)")
+        }
+        XCTAssertEqual(filteredOrg, "OpenAI Org")
+        XCTAssertEqual(filtered.finalizedCost.cents, 2_300)
+        XCTAssertEqual(vm.selectedProvider, ProviderKind.openAI)
+
+        vm.selectProviderFilter(nil as ProviderKind?)
+        guard case .loaded(let combined, let combinedOrg) = vm.state else {
+            return XCTFail("expected .loaded after clearing filter, got \(vm.state)")
+        }
+        XCTAssertEqual(combinedOrg, "All providers")
+        XCTAssertEqual(combined.finalizedCost.cents, 3_500)
+        XCTAssertNil(vm.selectedProvider)
+    }
+
+    func testRefresh_authFailureForOneProvider_preservesOtherProviderCredentialAndCache() async {
+        let cachedAnthropic = TestFixtures.report(finalizedCents: 1_111)
+        let freshOpenAI = TestFixtures.report(finalizedCents: 2_222)
+        let cost = MockCostProvider(
+            whoamiByKey: [validKey: .failure(TestFixtures.httpError(401)), openAIKey: .success(org("OpenAI Org"))],
+            costByKey: [openAIKey: .success(freshOpenAI)]
+        )
+        let keychain = MockCredentialStore(storedByProvider: [ProviderKind.anthropic: validKey, ProviderKind.openAI: openAIKey])
+        let cache = MockReportCache(cachedByProvider: [
+            ProviderKind.anthropic: (cachedAnthropic, "Old Anthropic"),
+            ProviderKind.openAI: (TestFixtures.report(finalizedCents: 999), "Old OpenAI")
+        ])
+        let vm = makeVM(cost: cost, keychain: keychain, cache: cache)
+
+        await vm.refresh()
+
+        XCTAssertNil(keychain.storedByProvider[ProviderKind.anthropic], "Rejected provider credential is removed")
+        XCTAssertEqual(keychain.storedByProvider[ProviderKind.openAI], openAIKey, "Unaffected provider credential remains")
+        XCTAssertNil(cache.cachedByProvider[ProviderKind.anthropic], "Rejected provider cache is cleared")
+        XCTAssertEqual(cache.cachedByProvider[ProviderKind.openAI]?.report, freshOpenAI, "Unaffected provider refresh/cache remains")
+        guard case .loaded(let loaded, let org) = vm.state else {
+            return XCTFail("expected .loaded with remaining provider, got \(vm.state)")
+        }
+        XCTAssertEqual(org, "OpenAI Org")
+        XCTAssertEqual(loaded.finalizedCost.cents, 2_222)
+        XCTAssertEqual(vm.providerReports.map { $0.provider }, [ProviderKind.openAI])
     }
 
     func testBootstrap_keychainThrows_goesToFailed() async {
@@ -441,6 +525,8 @@ private enum TestFixtures {
 private final class MockCostProvider: CostProviding {
     var whoamiResult: Result<AnthropicAPI.OrgIdentity, Error>
     var costResult: Result<MTDCost, Error>
+    var whoamiByKey: [String: Result<AnthropicAPI.OrgIdentity, Error>]
+    var costByKey: [String: Result<MTDCost, Error>]
     private(set) var whoamiCount = 0
     private(set) var costCount = 0
     private(set) var lastApiKey: String?
@@ -449,52 +535,78 @@ private final class MockCostProvider: CostProviding {
         whoami: Result<AnthropicAPI.OrgIdentity, Error> = .success(
             AnthropicAPI.OrgIdentity(id: "org_test", type: "organization", name: "Test Org")
         ),
-        cost: Result<MTDCost, Error> = .success(TestFixtures.report())
+        cost: Result<MTDCost, Error> = .success(TestFixtures.report()),
+        whoamiByKey: [String: Result<AnthropicAPI.OrgIdentity, Error>] = [:],
+        costByKey: [String: Result<MTDCost, Error>] = [:]
     ) {
         self.whoamiResult = whoami
         self.costResult = cost
+        self.whoamiByKey = whoamiByKey
+        self.costByKey = costByKey
     }
 
     func whoami(apiKey: String) async throws -> AnthropicAPI.OrgIdentity {
         whoamiCount += 1
         lastApiKey = apiKey
-        return try whoamiResult.get()
+        return try (whoamiByKey[apiKey] ?? whoamiResult).get()
     }
 
     func monthToDateCost(apiKey: String) async throws -> MTDCost {
         costCount += 1
         lastApiKey = apiKey
-        return try costResult.get()
+        return try (costByKey[apiKey] ?? costResult).get()
     }
 }
 
 private final class MockCredentialStore: CredentialStoring {
-    var stored: String?
+    var storedByProvider: [ProviderKind: String]
     var loadError: Error?
     var deleteError: Error?
     private(set) var saveCount = 0
     private(set) var deleteCount = 0
     private(set) var savedValue: String?
+    private(set) var savedProvider: ProviderKind?
 
-    init(stored: String? = nil) {
-        self.stored = stored
+    var stored: String? {
+        get { storedByProvider[.anthropic] ?? storedByProvider[.openAI] }
+        set {
+            storedByProvider.removeAll()
+            if let newValue { storedByProvider[providerKind(for: newValue)] = newValue }
+        }
     }
 
-    func load() throws -> String? {
+    init(stored: String? = nil, storedByProvider: [ProviderKind: String] = [:]) {
+        self.storedByProvider = storedByProvider
+        if let stored { self.storedByProvider[providerKind(for: stored)] = stored }
+    }
+
+    func loadAll() throws -> [ProviderKind: String] {
         if let loadError { throw loadError }
-        return stored
+        return storedByProvider
     }
 
-    func save(_ value: String) throws {
+    func load(_ provider: ProviderKind) throws -> String? {
+        if let loadError { throw loadError }
+        return storedByProvider[provider]
+    }
+
+    func save(_ value: String, for provider: ProviderKind) throws {
         saveCount += 1
         savedValue = value
-        stored = value
+        savedProvider = provider
+        storedByProvider[provider] = value
     }
 
-    func delete() throws {
+    func delete(_ provider: ProviderKind) throws {
         deleteCount += 1
         if let deleteError { throw deleteError }
-        stored = nil
+        storedByProvider[provider] = nil
+    }
+
+    func deleteAll() throws {
+        deleteCount += 1
+        if let deleteError { throw deleteError }
+        storedByProvider.removeAll()
     }
 }
 
@@ -513,23 +625,42 @@ private final class MockNotificationPrefs: NotificationPreferenceStoring {
 }
 
 private final class MockReportCache: ReportCaching {
-    var cached: (report: MTDCost, orgName: String)?
+    var cachedByProvider: [ProviderKind: (report: MTDCost, orgName: String)]
     private(set) var saveCount = 0
     private(set) var clearCount = 0
 
-    init(cached: (report: MTDCost, orgName: String)? = nil) {
-        self.cached = cached
+    var cached: (report: MTDCost, orgName: String)? {
+        get { cachedByProvider[.anthropic] ?? cachedByProvider[.openAI] }
+        set {
+            cachedByProvider.removeAll()
+            if let newValue { cachedByProvider[.anthropic] = newValue }
+        }
     }
 
-    func load() -> (report: MTDCost, orgName: String)? { cached }
+    init(
+        cached: (report: MTDCost, orgName: String)? = nil,
+        cachedByProvider: [ProviderKind: (report: MTDCost, orgName: String)] = [:]
+    ) {
+        self.cachedByProvider = cachedByProvider
+        if let cached { self.cachedByProvider[.anthropic] = cached }
+    }
 
-    func save(report: MTDCost, orgName: String) {
+    func loadAll() -> [ProviderKind: (report: MTDCost, orgName: String)] { cachedByProvider }
+
+    func load(_ provider: ProviderKind) -> (report: MTDCost, orgName: String)? { cachedByProvider[provider] }
+
+    func save(report: MTDCost, orgName: String, for provider: ProviderKind) {
         saveCount += 1
-        cached = (report, orgName)
+        cachedByProvider[provider] = (report, orgName)
     }
 
-    func clear() {
+    func clear(_ provider: ProviderKind) {
         clearCount += 1
-        cached = nil
+        cachedByProvider[provider] = nil
+    }
+
+    func clearAll() {
+        clearCount += 1
+        cachedByProvider.removeAll()
     }
 }

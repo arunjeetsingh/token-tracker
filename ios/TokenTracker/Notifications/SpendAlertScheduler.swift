@@ -49,8 +49,17 @@ struct SpendAlertChecker {
         guard prefs.alertEnabled else { return }
         guard let limitCents = spendLimits.limitCents else { return }
         if isDemoActive() { return }
-        guard let key = (try? credentials.load()) ?? nil, !key.isEmpty else { return }
-        guard let report = try? await cost.monthToDateCost(apiKey: key) else { return }
+        let keys = ((try? credentials.loadAll()) ?? [:]).values.filter { !$0.isEmpty }
+        guard !keys.isEmpty else { return }
+
+        var reports: [MTDCost] = []
+        for key in keys {
+            if let report = try? await cost.monthToDateCost(apiKey: key) {
+                reports.append(report)
+            }
+        }
+        guard !reports.isEmpty else { return }
+        let report = reports.count == 1 ? reports[0] : combineMTDCosts(reports)
 
         let spent = report.total.cents
         guard SpendAlert.atThreshold(spentCents: spent, limitCents: limitCents) else { return }

@@ -12,9 +12,15 @@ final class DashboardViewModel: ObservableObject {
     /// snapshot resolves synchronously.
     @Published private(set) var isRefreshing: Bool = false
 
-    /// Last successfully-used key, kept in memory only so Settings can show a
+    /// Last successfully-used key(s), kept in memory only so Settings can show a
     /// masked rendering without re-reading the Keychain. Reset on disconnect.
     @Published private(set) var maskedKey: String?
+
+    /// Per-provider reports backing the combined dashboard and provider filter.
+    @Published private(set) var providerReports: [ProviderReport] = []
+
+    /// nil means “All providers”; otherwise the dashboard shows one provider.
+    @Published private(set) var selectedProvider: ProviderKind?
 
     /// User's on-device monthly spend-limit target in cents (nil = unset).
     /// Local tracking value only — the Admin API can't read/set the real limit.
@@ -85,34 +91,33 @@ final class DashboardViewModel: ObservableObject {
             switch DemoMode.screen ?? .dashboard {
             case .dashboard:
                 let demo = DemoMode.snapshot()
-                // Render the masked form of the actual magic key so Settings
-                // looks consistent (`sk-…w22`). Falls back to the same
-                // masking path real keys use.
                 maskedKey = AnthropicKeyValidation.masked(DemoMode.appReviewKey)
+                providerReports = []
+                selectedProvider = nil
                 state = .loaded(report: demo.report, orgName: demo.orgName)
             case .onboarding:
-                // Force the onboarding flow without touching Keychain.
                 maskedKey = nil
+                providerReports = []
+                selectedProvider = nil
                 state = .needsCredentials
             }
             return
         }
         do {
-            guard let key = try keychain.load(), !key.isEmpty else {
+            let keys = try keychain.loadAll().filter { !$0.value.isEmpty }
+            guard !keys.isEmpty else {
+                maskedKey = nil
+                providerReports = []
+                selectedProvider = nil
                 state = .needsCredentials
                 return
             }
-            maskedKey = AnthropicKeyValidation.masked(key)
-            // Show cached data immediately so the user never stares at an
-            // empty screen on launch. The refresh below will replace it
-            // (or, on auth failure, the keychain wipe in refresh(using:)
-            // will already have cleared the cache). On cache miss we still
-            // fall through to .loading so the user sees the spinner — that
-            // path is unchanged from before.
-            if let cached = cache.load() {
-                state = .loaded(report: cached.report, orgName: cached.orgName)
+            maskedKey = maskedKeys(keys)
+            let cached = cache.loadAll().providerReports
+            if !cached.isEmpty {
+                applyLoaded(cached, selectedProvider: selectedProvider)
             }
-            await refresh(using: key)
+            await refresh(using: keys)
         } catch {
             state = .failed(message: "Keychain error: \(error.localizedDescription)")
         }
@@ -132,50 +137,37 @@ final class DashboardViewModel: ObservableObject {
             DemoMode.isPersistedActive = true
             let demo = DemoMode.snapshot()
             maskedKey = AnthropicKeyValidation.masked(trimmed)
+            providerReports = []
+            selectedProvider = nil
             state = .loaded(report: demo.report, orgName: demo.orgName)
             return .success(())
         }
         state = .loading
-        do {
-            let identity = try await cost.whoami(apiKey: trimmed)
-            // Real key authenticated successfully — user has explicitly chosen
-            // to leave demo mode. Clear the persisted flag so the DEMO pill
-            // disappears. (We do this only AFTER whoami succeeds; if the
-            // network call fails, we preserve the previous demo state so a
-            // transient failure doesn't strand a reviewer with no working UI.
-            // 401/403 failures are handled in the catch branch below and
-            // intentionally leave the flag alone.)
-            DemoMode.isPersistedActive = false
-            try keychain.save(trimmed)
-            maskedKey = AnthropicKeyValidation.masked(trimmed)
-            // Now fetch cost. A *transient* failure here keeps the saved key
-            // (it auth'd) and surfaces in the dashboard state. But a 401/403
-            // means the key was rejected after all (revoked, or insufficient
-            // scope, between whoami and this call) — honor the documented
-            // "401/403 → wipe key + re-onboard" contract instead of stranding a
-            // dead key in the Keychain behind a generic dashboard error. Mirrors
-            // the auth branch in refresh(using:).
-            do {
-                let report = try await cost.monthToDateCost(apiKey: trimmed)
-                cache.save(report: report, orgName: identity.name)
-                state = .loaded(report: report, orgName: identity.name)
-            } catch where isProviderAuthError(error) {
-                try? keychain.delete()
-                cache.clear()
-                maskedKey = nil
-                state = .needsCredentials
-                return .failure(ConnectError(message: Self.rejectedKeyMessage))
-            } catch {
-                state = .failed(message: error.localizedDescription)
-            }
-            return .success(())
-        } catch where isProviderAuthError(error) {
-            state = .needsCredentials
-            return .failure(ConnectError(message: Self.rejectedKeyMessage))
-        } catch {
-            state = .needsCredentials
-            return .failure(ConnectError(message: error.localizedDescription))
+        return await verifyAndSave(trimmed, preserveExistingOnFailure: false)
+    }
+
+    /// Settings uses this to add/replace one provider credential in-place. A
+    /// rejected replacement leaves the current dashboard, cache, and other
+    /// provider credentials intact.
+    func replaceCredential(using rawKey: String) async -> Result<Void, Error> {
+        let trimmed = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure(ConnectError(message: "Paste your admin key to continue."))
         }
+        if DemoMode.isReviewKey(trimmed) {
+            DemoMode.isPersistedActive = true
+            let demo = DemoMode.snapshot()
+            maskedKey = AnthropicKeyValidation.masked(trimmed)
+            providerReports = []
+            selectedProvider = nil
+            state = .loaded(report: demo.report, orgName: demo.orgName)
+            return .success(())
+        }
+
+        let hadLoadedDashboard = state.isLoaded
+        if hadLoadedDashboard { isRefreshing = true }
+        defer { if hadLoadedDashboard { isRefreshing = false } }
+        return await verifyAndSave(trimmed, preserveExistingOnFailure: true)
     }
 
     func refresh() async {
@@ -185,19 +177,29 @@ final class DashboardViewModel: ObservableObject {
         if DemoMode.isEnabled {
             let demo = DemoMode.snapshot()
             maskedKey = AnthropicKeyValidation.masked(DemoMode.appReviewKey)
+            providerReports = []
+            selectedProvider = nil
             state = .loaded(report: demo.report, orgName: demo.orgName)
             return
         }
         do {
-            guard let key = try keychain.load() else {
+            let keys = try keychain.loadAll().filter { !$0.value.isEmpty }
+            guard !keys.isEmpty else {
                 state = .needsCredentials
                 maskedKey = nil
+                providerReports = []
+                selectedProvider = nil
                 return
             }
-            await refresh(using: key)
+            await refresh(using: keys)
         } catch {
             state = .failed(message: "Keychain error: \(error.localizedDescription)")
         }
+    }
+
+    func selectProviderFilter(_ provider: ProviderKind?) {
+        guard !providerReports.isEmpty else { return }
+        applyLoaded(providerReports, selectedProvider: provider)
     }
 
     func disconnect() async {
@@ -206,28 +208,71 @@ final class DashboardViewModel: ObservableObject {
         // the user toggled between real and demo over the lifetime of the
         // install — it's a no-op when nothing's stored.
         DemoMode.isPersistedActive = false
-        // Drop the cached snapshot too so a fresh connection (potentially a
-        // different provider account) doesn't briefly flash the previous owner's
-        // data while it loads.
-        cache.clear()
+        cache.clearAll()
         do {
-            try keychain.delete()
+            try keychain.deleteAll()
         } catch {
             // We still flip back to onboarding — the user clearly wants out.
             state = .failed(message: "Disconnected, but Keychain reported: \(error.localizedDescription)")
             return
         }
         maskedKey = nil
+        providerReports = []
+        selectedProvider = nil
         state = .needsCredentials
     }
 
-    private func refresh(using key: String) async {
-        // If we already have data on screen (cached snapshot from bootstrap,
-        // or a previously-loaded report from a manual refresh), keep it
-        // visible and just surface the refresh indicator in the toolbar.
-        // Only fall back to the full-screen spinner when there's literally
-        // nothing to show — first install, post-disconnect, or after an
-        // error wiped the loaded state.
+    private func verifyAndSave(_ trimmed: String, preserveExistingOnFailure: Bool) async -> Result<Void, Error> {
+        let provider = providerKind(for: trimmed)
+        do {
+            let identity = try await cost.whoami(apiKey: trimmed)
+            if preserveExistingOnFailure {
+                let report = try await cost.monthToDateCost(apiKey: trimmed)
+                DemoMode.isPersistedActive = false
+                try keychain.save(trimmed, for: provider)
+                maskedKey = maskedKeys((try? keychain.loadAll()) ?? [provider: trimmed])
+                cache.save(report: report, orgName: identity.name, for: provider)
+                applyLoaded(cache.loadAll().providerReports.ifEmpty([ProviderReport(provider: provider, orgName: identity.name, report: report)]), selectedProvider: selectedProvider)
+                return .success(())
+            }
+
+            // Initial connect preserves the historical behavior: a key that
+            // authenticated with whoami is saved before the first cost fetch so
+            // transient cost failures do not force the user to paste it again.
+            DemoMode.isPersistedActive = false
+            try keychain.save(trimmed, for: provider)
+            maskedKey = maskedKeys((try? keychain.loadAll()) ?? [provider: trimmed])
+            do {
+                let report = try await cost.monthToDateCost(apiKey: trimmed)
+                cache.save(report: report, orgName: identity.name, for: provider)
+                applyLoaded(cache.loadAll().providerReports.ifEmpty([ProviderReport(provider: provider, orgName: identity.name, report: report)]), selectedProvider: selectedProvider)
+            } catch where isProviderAuthError(error) {
+                try? keychain.delete(provider)
+                cache.clear(provider)
+                let remaining = (try? keychain.loadAll()) ?? [:]
+                maskedKey = maskedKeys(remaining)
+                if remaining.isEmpty {
+                    providerReports = []
+                    selectedProvider = nil
+                    state = .needsCredentials
+                } else {
+                    applyLoaded(cache.loadAll().providerReports, selectedProvider: selectedProvider)
+                }
+                return .failure(ConnectError(message: Self.rejectedKeyMessage))
+            } catch {
+                state = .failed(message: error.localizedDescription)
+            }
+            return .success(())
+        } catch where isProviderAuthError(error) {
+            if !preserveExistingOnFailure { state = .needsCredentials }
+            return .failure(ConnectError(message: Self.rejectedKeyMessage))
+        } catch {
+            if !preserveExistingOnFailure { state = .needsCredentials }
+            return .failure(ConnectError(message: error.localizedDescription))
+        }
+    }
+
+    private func refresh(using keys: [ProviderKind: String]) async {
         let hasSomethingToShow = state.isLoaded
         if hasSomethingToShow {
             isRefreshing = true
@@ -236,30 +281,68 @@ final class DashboardViewModel: ObservableObject {
         }
         defer { isRefreshing = false }
 
-        do {
-            async let identity = cost.whoami(apiKey: key)
-            async let report = cost.monthToDateCost(apiKey: key)
-            let (orgID, mtd) = try await (identity, report)
-            maskedKey = AnthropicKeyValidation.masked(key)
-            cache.save(report: mtd, orgName: orgID.name)
-            state = .loaded(report: mtd, orgName: orgID.name)
-        } catch where isProviderAuthError(error) {
-            // Token went bad — wipe it (and the cache) and force re-onboarding.
-            try? keychain.delete()
-            cache.clear()
-            maskedKey = nil
-            state = .needsCredentials
-        } catch {
-            // Network / transient failure: if we have cached data on screen,
-            // leave it there. The user can see the staleness via the report's
-            // `asOf` timestamp and the cleared refresh indicator. Only
-            // surface .failed when there's nothing else to look at.
-            if !hasSomethingToShow {
-                state = .failed(message: error.localizedDescription)
+        var freshReports: [ProviderReport] = []
+        var transientFailure: Error?
+        for (provider, key) in keys.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            do {
+                async let identity = cost.whoami(apiKey: key)
+                async let report = cost.monthToDateCost(apiKey: key)
+                let (orgID, mtd) = try await (identity, report)
+                cache.save(report: mtd, orgName: orgID.name, for: provider)
+                freshReports.append(ProviderReport(provider: provider, orgName: orgID.name, report: mtd))
+            } catch where isProviderAuthError(error) {
+                try? keychain.delete(provider)
+                cache.clear(provider)
+            } catch {
+                transientFailure = error
             }
+        }
+
+        let remainingKeys = (try? keychain.loadAll()) ?? [:]
+        maskedKey = maskedKeys(remainingKeys)
+        let cachedReportsByProvider = Dictionary(uniqueKeysWithValues: cache.loadAll().providerReports.map { ($0.provider, $0) })
+        let freshReportsByProvider = Dictionary(uniqueKeysWithValues: freshReports.map { ($0.provider, $0) })
+        let reports = Array(cachedReportsByProvider.merging(freshReportsByProvider) { _, fresh in fresh }.values)
+            .sorted { $0.provider.rawValue < $1.provider.rawValue }
+        if !reports.isEmpty {
+            applyLoaded(reports, selectedProvider: selectedProvider)
+        } else if remainingKeys.isEmpty {
+            maskedKey = nil
+            providerReports = []
+            selectedProvider = nil
+            state = .needsCredentials
+        } else if !hasSomethingToShow {
+            state = .failed(message: transientFailure?.localizedDescription ?? "Couldn't load your usage.")
         }
     }
 
+    private func applyLoaded(_ reports: [ProviderReport], selectedProvider provider: ProviderKind?) {
+        guard !reports.isEmpty else { return }
+        let sorted = reports.sorted { $0.provider.rawValue < $1.provider.rawValue }
+        providerReports = sorted
+        let effectiveSelection = provider.flatMap { selected in
+            sorted.contains(where: { $0.provider == selected }) ? selected : nil
+        }
+        selectedProvider = effectiveSelection
+        let visible = effectiveSelection.map { selected in sorted.filter { $0.provider == selected } } ?? sorted
+        let report = visible.count == 1 ? visible[0].report : combineMTDCosts(visible.map { $0.report })
+        let orgName: String
+        if effectiveSelection != nil {
+            orgName = visible[0].orgName
+        } else if sorted.count == 1 {
+            orgName = sorted[0].orgName
+        } else {
+            orgName = "All providers"
+        }
+        state = .loaded(report: report, orgName: orgName)
+    }
+
+    private func maskedKeys(_ keys: [ProviderKind: String]) -> String? {
+        guard !keys.isEmpty else { return nil }
+        return keys.sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { provider, key in "\(provider.displayName): \(AnthropicKeyValidation.masked(key))" }
+            .joined(separator: " · ")
+    }
     private static let rejectedKeyMessage =
         "Your provider rejected this key. Double-check that you copied the right admin/project key and try again."
 }

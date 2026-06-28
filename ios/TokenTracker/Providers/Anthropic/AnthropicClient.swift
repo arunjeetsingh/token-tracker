@@ -435,6 +435,28 @@ struct MTDCost: Equatable, Codable {
     var hasUnpricedModels: Bool { !unpricedModels.isEmpty }
 }
 
+func combineMTDCosts(_ reports: [MTDCost]) -> MTDCost {
+    precondition(!reports.isEmpty, "At least one report is required")
+    let daily = Dictionary(grouping: reports.flatMap { $0.dailySpend }, by: { $0.date })
+        .map { date, rows in DailySpend(date: date, cost: Money(cents: rows.reduce(Int64(0)) { $0 + $1.cost.cents })) }
+        .sorted { $0.date < $1.date }
+    let models = Dictionary(grouping: reports.flatMap { $0.modelBreakdown }, by: { $0.modelId + "\u{1f}" + $0.displayName })
+        .map { _, rows in
+            let first = rows[0]
+            return ModelSpend(modelId: first.modelId, displayName: first.displayName, cost: Money(cents: rows.reduce(Int64(0)) { $0 + $1.cost.cents }))
+        }
+        .sorted { $0.cost.cents > $1.cost.cents }
+    return MTDCost(
+        finalizedCost: Money(cents: reports.reduce(Int64(0)) { $0 + $1.finalizedCost.cents }),
+        todayEstimatedCost: Money(cents: reports.reduce(Int64(0)) { $0 + $1.todayEstimatedCost.cents }),
+        unpricedModels: Array(Set(reports.flatMap { $0.unpricedModels })).sorted(),
+        finalizedThrough: reports.map { $0.finalizedThrough }.min() ?? Date(),
+        asOf: reports.map { $0.asOf }.max() ?? Date(),
+        dailySpend: daily,
+        modelBreakdown: models
+    )
+}
+
 extension URLSession {
     /// Convenience: throws on non-2xx responses; otherwise returns body + response.
     func dataAndThrowOnHTTPError(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
