@@ -182,13 +182,34 @@ class DashboardViewModel(
         val provider = providerKindFor(trimmed)
         return try {
             val identity = cost.whoami(trimmed)
-            val report = cost.monthToDateCost(trimmed)
 
             demoMode.setActive(false)
             _isDemo.value = false
             credentialStore.save(provider, trimmed)
             val keys = credentialStore.loadAll()
             _maskedKey.value = maskedKeys(keys.ifEmpty { mapOf(provider to trimmed) })
+
+            val report = try {
+                cost.monthToDateCost(trimmed)
+            } catch (e: Exception) {
+                if (e.isProviderAuthError()) {
+                    credentialStore.delete(provider)
+                    cache.clear(provider)
+                    if (!preserveExistingOnFailure) {
+                        _maskedKey.value = maskedKeys(credentialStore.loadAll())
+                        _state.value = DashboardState.NeedsCredentials
+                    }
+                    return ConnectResult.Failure(REJECTED_KEY_MESSAGE)
+                }
+                if (!preserveExistingOnFailure) {
+                    _state.value = DashboardState.Failed(
+                        e.message ?: "Couldn't load your usage."
+                    )
+                    return ConnectResult.Success
+                }
+                return ConnectResult.Failure(e.message ?: "Couldn't connect. Check your connection and try again.")
+            }
+
             cache.save(provider, report, identity.name)
             val providerReports = cache.loadAll().toProviderReports().ifEmpty {
                 listOf(ProviderReport(provider, identity.name, report))
@@ -243,11 +264,11 @@ class DashboardViewModel(
             _maskedKey.value = maskedKeys(remainingKeys)
             _isDemo.value = false
 
-            val reports = if (freshReports.isNotEmpty()) {
-                freshReports
-            } else {
-                cache.loadAll().toProviderReports()
-            }
+            val cachedReportsByProvider = cache.loadAll().toProviderReports().associateBy { it.provider }
+            val freshReportsByProvider = freshReports.associateBy { it.provider }
+            val reports = (cachedReportsByProvider + freshReportsByProvider)
+                .values
+                .sortedBy { it.provider.ordinal }
 
             if (reports.isNotEmpty()) {
                 _state.value = loadedState(reports, selectedProvider())

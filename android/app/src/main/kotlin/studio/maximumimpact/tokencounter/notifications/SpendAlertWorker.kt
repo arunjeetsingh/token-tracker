@@ -42,18 +42,20 @@ class SpendAlertWorker(
         if (keys.isEmpty()) return Result.success()
 
         val reports = mutableListOf<MtdCost>()
+        var sawTransientFailure = false
         val provider = LiveCostProvider()
         for (key in keys) {
             val report = try {
                 provider.monthToDateCost(key)
             } catch (e: Exception) {
-                // 401/403 means one provider key is bad (revoked / wrong scope) — terminal for
-                // this run, so don't hammer the API with background retries. Only transient
-                // (network / server) failures get a backoff retry.
-                return if (e.isProviderAuthError()) Result.success() else Result.retry()
+                // A bad key or transient outage for one provider should not abort the whole
+                // multi-provider check; combine whatever succeeds this run.
+                if (!e.isProviderAuthError()) sawTransientFailure = true
+                continue
             }
             reports += report
         }
+        if (reports.isEmpty()) return if (sawTransientFailure) Result.retry() else Result.success()
 
         val report = combineMtdCosts(reports)
 

@@ -47,9 +47,11 @@ class DataStoreReportCache(
 
     override suspend fun loadAll(): Map<ProviderKind, CachedReport> {
         val prefs = dataStore.data.first()
-        return ProviderKind.entries.mapNotNull { provider ->
+        val providerSnapshots = ProviderKind.entries.mapNotNull { provider ->
             readSnapshot(prefs[providerKey(provider)])?.let { provider to it }
         }.toMap()
+        if (providerSnapshots.isNotEmpty()) return providerSnapshots
+        return readSnapshot(prefs[KEY])?.let { mapOf(ProviderKind.ANTHROPIC to it) } ?: emptyMap()
     }
 
     override suspend fun save(report: MtdCost, orgName: String) {

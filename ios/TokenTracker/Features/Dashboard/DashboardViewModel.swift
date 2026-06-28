@@ -300,7 +300,10 @@ final class DashboardViewModel: ObservableObject {
 
         let remainingKeys = (try? keychain.loadAll()) ?? [:]
         maskedKey = maskedKeys(remainingKeys)
-        let reports = freshReports.isEmpty ? cache.loadAll().providerReports : freshReports
+        let cachedReportsByProvider = Dictionary(uniqueKeysWithValues: cache.loadAll().providerReports.map { ($0.provider, $0) })
+        let freshReportsByProvider = Dictionary(uniqueKeysWithValues: freshReports.map { ($0.provider, $0) })
+        let reports = Array(cachedReportsByProvider.merging(freshReportsByProvider) { _, fresh in fresh }.values)
+            .sorted { $0.provider.rawValue < $1.provider.rawValue }
         if !reports.isEmpty {
             applyLoaded(reports, selectedProvider: selectedProvider)
         } else if remainingKeys.isEmpty {

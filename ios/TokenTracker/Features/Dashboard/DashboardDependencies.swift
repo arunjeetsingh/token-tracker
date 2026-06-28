@@ -28,7 +28,7 @@ enum ProviderKind: String, CaseIterable, Codable, Equatable, Hashable {
 }
 
 func providerKind(for apiKey: String) -> ProviderKind {
-    apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sk-ant-") ? .anthropic : .openAI
+    apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sk-ant") ? .anthropic : .openAI
 }
 
 /// Reads / writes provider API keys in the Keychain.

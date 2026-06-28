@@ -36,7 +36,8 @@ private class FakeCostProvider(
     var reportError: Throwable? = null,
     var orgsByKey: Map<String, OrgIdentity> = emptyMap(),
     var reportsByKey: Map<String, MtdCost> = emptyMap(),
-    var errorsByKey: Map<String, Throwable> = emptyMap()
+    var errorsByKey: Map<String, Throwable> = emptyMap(),
+    var reportErrorsByKey: Map<String, Throwable> = emptyMap()
 ) : CostProvider {
     override suspend fun whoami(apiKey: String): OrgIdentity {
         errorsByKey[apiKey]?.let { throw it }
@@ -45,6 +46,7 @@ private class FakeCostProvider(
     }
 
     override suspend fun monthToDateCost(apiKey: String): MtdCost {
+        reportErrorsByKey[apiKey]?.let { throw it }
         errorsByKey[apiKey]?.let { throw it }
         reportError?.let { throw it }
         return reportsByKey[apiKey] ?: report ?: error("no report configured")
@@ -205,6 +207,20 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun connect_transientCostFailureAfterWhoami_keepsAuthenticatedKeyAndShowsError() = runTest(dispatcher) {
+        cost.org = OrgIdentity("org_9", "organization", "Globex")
+        cost.reportError = java.io.IOException("temporary outage")
+        val vm = viewModel()
+
+        val result = vm.connect("sk-ant...real")
+
+        assertEquals(ConnectResult.Success, result)
+        assertEquals("sk-ant...real", creds.storedByProvider[studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC])
+        val state = vm.state.value
+        assertTrue(state is DashboardState.Failed && state.message == "temporary outage")
+    }
+
+    @Test
     fun replaceCredential_authErrorKeepsExistingLoadedStateAndCredential() = runTest(dispatcher) {
         creds.stored = "sk-ant...old"
         cache.cached = CachedReport(sampleReport, "Old Org")
@@ -238,7 +254,15 @@ class DashboardViewModelTest {
         assertEquals(ConnectResult.Success, result)
         assertEquals("sk-admin-new", creds.stored)
         val state = vm.state.value
-        assertTrue(state is DashboardState.Loaded && state.orgName == "New Org")
+        assertTrue(state is DashboardState.Loaded && state.orgName == "All providers")
+        state as DashboardState.Loaded
+        assertEquals(
+            setOf(
+                studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC,
+                studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI
+            ),
+            state.providerReports.map { it.provider }.toSet()
+        )
         assertEquals(CachedReport(sampleReport, "New Org"), cache.cached)
     }
 
@@ -310,6 +334,34 @@ class DashboardViewModelTest {
         val state = vm.state.value as DashboardState.Loaded
         assertEquals(studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI, state.selectedProvider)
         assertEquals(2_300L, state.report.total.cents)
+    }
+
+    @Test
+    fun refresh_transientFailureForOneProviderMergesFreshReportsOverCachedReports() = runTest(dispatcher) {
+        val cachedAnthropic = reportWithFinalizedCents(1_200)
+        val freshAnthropic = reportWithFinalizedCents(1_500)
+        val cachedOpenAI = reportWithFinalizedCents(2_300)
+        cost.orgsByKey = mapOf("sk-ant...ored" to OrgIdentity("org_anthropic", "organization", "Anthropic"))
+        cost.reportsByKey = mapOf("sk-ant...ored" to freshAnthropic)
+        cost.reportErrorsByKey = mapOf("***" to java.io.IOException("temporary outage"))
+        creds.storedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to "sk-ant...ored",
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to "***"
+        )
+        cache.cachedByProvider = mapOf(
+            studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC to CachedReport(cachedAnthropic, "Anthropic"),
+            studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI to CachedReport(cachedOpenAI, "OpenAI")
+        )
+        val vm = viewModel()
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        val state = vm.state.value as DashboardState.Loaded
+        assertEquals(3_800L, state.report.total.cents)
+        assertEquals(setOf(studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC, studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI), state.providerReports.map { it.provider }.toSet())
+        assertEquals(1_500L, state.providerReports.single { it.provider == studio.maximumimpact.tokencounter.providers.ProviderKind.ANTHROPIC }.report.total.cents)
+        assertEquals(2_300L, state.providerReports.single { it.provider == studio.maximumimpact.tokencounter.providers.ProviderKind.OPENAI }.report.total.cents)
     }
 
     @Test
