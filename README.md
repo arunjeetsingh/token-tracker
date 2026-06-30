@@ -9,8 +9,9 @@ no analytics.
 ## Status
 
 🚀 **Shipped and open source.** iOS is live on the App Store and Android is live on
-Google Play. Both show month-to-date Anthropic spend from the Usage & Cost Admin
-API, with a per-model breakdown, a 30-day trend, and a spend-limit gauge + 90% alert.
+Google Play. Both show month-to-date spend from Anthropic's Usage & Cost Admin API
+(and now OpenAI's organization Costs API), with a per-model breakdown, a 30-day
+trend, and a spend-limit gauge + 90% alert.
 
 **Get it:**
 
